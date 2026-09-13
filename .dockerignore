@@ -1,0 +1,7 @@
+*
+!docker/
+!third_party/llama.cpp/
+third_party/llama.cpp/.git
+third_party/llama.cpp/build
+!third_party/ros_src/
+third_party/ros_src/**/.git
