@@ -128,7 +128,8 @@ Deliverables:
 - GitHub issue and PR for Phase 0 following the conventions.
 
 DoD:
-- [ ] `docker image ls safenav-llm:humble` shows the image; `docker compose -f docker/docker-compose.yml run --rm dev bash -lc "ros2 pkg list | grep -c nav2_bt_navigator"` prints 1.
+- [ ] `docker image ls safenav-llm:humble` shows the image; after `docker compose -f docker/docker-compose.yml up -d`,
+      `docker compose -f docker/docker-compose.yml exec dev bash -lc "ros2 pkg list | grep -c -E '^(nav2_bt_navigator|turtlebot4_ignition_bringup)$'"` prints 2.
 - [ ] Inside the container: `llama-cli --version` works and `python3 -c "import llama_cpp, sklearn"` exits 0.
 - [ ] `ls -l models/*.gguf` shows three files with sizes 2.39 GB, 0.67 GB, 2.39 GB (approximately).
 - [ ] `/opt/anaconda3/envs/tf_env/bin/python -c "import llama_cpp, anthropic, sklearn"` exits 0.
@@ -685,15 +686,34 @@ out_of_graph`
 
 ## 13. Latency policy (CPU container versus hardware)
 
-The Jetson Orin NX runs llama.cpp with CUDA. The development container runs CPU only inside a
-VM on Apple Silicon, so absolute latency there is not the deployment number. Rules:
+Measured in Phase 0 with Phi-3 mini Q4_K_M (`llama-bench`, 8 threads):
+
+| Where | Prompt eval | Generation | One resolution (about 80 prompt tokens, 15 output tokens, no prefix cache) |
+|-------|-------------|------------|-------|
+| Docker container on the M2 (CPU, arm64 VM) | 7.2 tok/s | 3.3 tok/s | 9 to 15 s |
+| Host macOS, Metal (llama-cpp-python) | about 56 tok/s | about 10 tok/s | 2 to 4.5 s (measured while the CPU was busy) |
+| Jetson Orin NX with CUDA (deployment, expected from the specification) | n/a | n/a | about 0.7 s |
+
+The container is therefore 5 to 10 times slower than the deployment target and cannot meet the
+p90 < 3000 ms target on its own. Rules:
 - Every latency table reports two columns: container CPU (rclcpp node, the real code path) and
   host Metal proxy (`ml/safenav_ml/latency_probe.py` using llama-cpp-python with the identical
-  prompt, grammar, and token counts).
-- The p90 < 3000 ms target is judged on container CPU first. Required mitigations before
-  declaring a miss: prefix KV caching, `n_threads` = all cores, production prompt with the fewest
-  few shot examples that keep accuracy within 2 points of the best, `max_tokens` bounded by the
-  grammar (the JSON output is about 15 tokens).
+  prompt, grammar, and token counts). The p90 < 3000 ms gate is judged on the Metal proxy, and
+  the container number is reported next to it with the explanation above.
+- Required mitigations in the resolver regardless of platform: prefix KV caching of the system
+  prompt (only the command tokens and the answer are evaluated per call), `n_threads` = all
+  cores, the production prompt with the fewest few shot examples that keep accuracy within 2
+  points of the best, `max_tokens` bounded by the grammar (the JSON answer is about 12 to 15
+  tokens; the grammar's optional whitespace lets the model emit the compact form).
+- Simulation configuration uses `timeout_ms: 20000` for the resolver service and the BT port
+  (`config/planner_params.yaml` sim profile), while the hardware profile keeps the
+  specification's 3000 ms. Batch runs (Phase 4 study on the host, Phases 7 and 8 in the
+  container) must budget about 10 s per LLM resolution in the container; fast path hits are
+  free.
+- Optional accelerator (Phase 5 stretch, only if batch runs are impractical): a `backend`
+  parameter on the resolver (`inprocess` default, `http` optional) that talks to a host side
+  `llama-server` (Metal) with the same grammar. The in process llama.cpp C API path stays the
+  reference implementation and the only one used for the reported architecture.
 - The fast path must resolve in under 5 ms and its hit rate on the benchmark is reported.
 
 ## 14. Recorded deviations from the specification

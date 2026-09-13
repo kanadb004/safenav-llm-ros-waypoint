@@ -54,7 +54,20 @@ ign gazebo --version: Gazebo Sim, version 6.18.0
 nproc 8, memory 7 GB (Docker Desktop allocation)
 ```
 
-Full image checks: see the "Sim overlay" section below (filled in when the overlay build finished).
+Full image checks (`docker compose up -d` then `exec dev bash -lc ...`):
+
+```
+ros2 pkg list: nav2_bt_navigator turtlebot4_ignition_bringup (2 of 2); overlay packages present:
+  gz_ros2_control irobot_create_ignition_{bringup,plugins,sim,toolbox} ros_gz_sim
+  turtlebot4_ignition_{bringup,gui_plugins,toolbox}
+python3: llama_cpp 0.3.16, sklearn 1.7.2, scipy 1.14.1; /ws/models has the three GGUF files
+CPU smoke test in the container: kitchen 14759 ms, charging_dock 9713 ms, cafeteria->kitchen 9073 ms
+llama-bench in the container: pp64 7.21 tok/s, tg16 3.31 tok/s (8 threads)
+host Metal: about 64 prompt tokens in 1136 ms, 16 generated tokens in 1558 ms
+```
+
+The container is 5 to 10 times slower than the Jetson target; PLAN section 13 records the
+resulting latency policy (sim timeouts of 20 s, Metal proxy for the p90 gate).
 
 ## Deviations and decisions
 
@@ -66,6 +79,16 @@ Full image checks: see the "Sim overlay" section below (filled in when the overl
 - D8: Phi-3.5 mini ablation model at Q4_K_M instead of Q8 (disk budget, user decision).
 - Docker Desktop has 8 GB memory. Gazebo plus Nav2 plus a 2.4 GB model may not fit; the user
   should raise it to 12 GB before Phase 2.
+
+## Build notes
+
+- Ubuntu 22.04 pip (22.0) cannot build llama-cpp-python 0.3.16 (old `packaging`); the image
+  upgrades pip, packaging and setuptools first.
+- `ros_gz_bridge` compiles generated factory files that take about 2 GB of RAM per compiler
+  process. With 4 parallel packages and `-j8` the 8 GB Docker VM ran out of memory; the overlay is
+  built with `-j2` for the bridge, then `-j4` with two parallel packages for the rest.
+- The base image entrypoint starts a MATE desktop with noVNC and ignores the command; use
+  `docker compose up -d` plus `exec`, or `--entrypoint bash` for one off commands.
 
 ## Open risks for Phase 1 and 2
 
