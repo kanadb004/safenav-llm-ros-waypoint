@@ -81,7 +81,8 @@ ENV CMAKE_PREFIX_PATH=/opt/llama.cpp:${CMAKE_PREFIX_PATH}
 
 # Python dependencies (llama-cpp-python builds against its bundled llama.cpp, CPU only)
 COPY docker/requirements.txt /tmp/requirements.txt
-RUN pip3 install --no-cache-dir -r /tmp/requirements.txt \
+RUN pip3 install --no-cache-dir --upgrade "pip>=24" "packaging>=24" "setuptools>=70" wheel \
+ && pip3 install --no-cache-dir -r /tmp/requirements.txt \
  && CMAKE_ARGS="-DGGML_NATIVE=ON" pip3 install --no-cache-dir llama-cpp-python==0.3.16 \
  && rm /tmp/requirements.txt
 
@@ -93,7 +94,7 @@ COPY docker/ros_entrypoint.sh /ros_entrypoint.sh
 COPY docker/safenav_env.sh /etc/profile.d/safenav_env.sh
 RUN chmod +x /ros_entrypoint.sh \
  && echo 'source /etc/profile.d/safenav_env.sh' >> /root/.bashrc \
- && echo 'source /etc/profile.d/safenav_env.sh' >> /home/ubuntu/.bashrc
+ && echo 'source /etc/profile.d/safenav_env.sh' >> /etc/bash.bashrc
 WORKDIR /ws/ros2_ws
 
 # ---------------------------------------------------------------------------
