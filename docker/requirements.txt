@@ -1,0 +1,15 @@
+numpy<2
+scikit-learn>=1.5,<1.8
+scipy
+pandas
+matplotlib
+joblib
+pytest
+pytest-timeout
+rapidfuzz
+Levenshtein
+pydantic>=2
+jsonschema
+anthropic
+tqdm
+pyyaml

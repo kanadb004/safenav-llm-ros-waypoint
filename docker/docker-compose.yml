@@ -1,0 +1,43 @@
+# Usage (from repo root):
+#   docker compose -f docker/docker-compose.yml build
+#   docker compose -f docker/docker-compose.yml up -d
+#   docker compose -f docker/docker-compose.yml exec dev bash
+# Desktop (RViz2, Gazebo GUI): http://localhost:6080
+services:
+  dev:
+    image: safenav-llm:humble
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: full
+    container_name: safenav-dev
+    hostname: safenav
+    ports:
+      - "6080:80"       # noVNC desktop
+      - "9090:9090"     # rosbridge websocket
+    volumes:
+      - ../ros2_ws:/ws/ros2_ws
+      - ../models:/ws/models:ro
+      - ../data:/ws/data
+      - ../ml:/ws/ml
+      - ../logs:/ws/logs
+      - safenav_build:/ws/ros2_ws/build
+      - safenav_install:/ws/ros2_ws/install
+      - safenav_log:/ws/ros2_ws/log
+    environment:
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - ROS_DOMAIN_ID=42
+      - SAFENAV_MODELS_DIR=/ws/models
+      - RESOLUTION=1600x900
+      - LIBGL_ALWAYS_SOFTWARE=1
+      - QT_X11_NO_MITSHM=1
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    shm_size: "2gb"
+    security_opt:
+      - seccomp=unconfined
+    stdin_open: true
+    tty: true
+volumes:
+  safenav_build:
+  safenav_install:
+  safenav_log:
