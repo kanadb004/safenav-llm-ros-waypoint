@@ -1,0 +1,14 @@
+# Host side (macOS, conda env tf_env) tooling for dataset generation, prompt study and calibration.
+# Install: /opt/anaconda3/envs/tf_env/bin/pip install -r ml/requirements-host.txt
+# llama-cpp-python is installed separately with Metal: see docs/PLAN.md Phase 0.
+pandas
+joblib
+pytest
+pytest-timeout
+rapidfuzz
+Levenshtein
+pydantic>=2
+jsonschema
+anthropic
+tqdm
+pyyaml
