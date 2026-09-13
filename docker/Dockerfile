@@ -105,9 +105,20 @@ FROM core AS full
 ENV IGNITION_VERSION=fortress
 ENV GZ_VERSION=fortress
 COPY third_party/ros_src /opt/sim_ws/src
+# ros_gz_bridge's generated factories need about 2 GB per compiler process, so it is built
+# first with low parallelism to stay inside an 8 GB Docker Desktop memory budget.
 RUN source /opt/ros/humble/setup.bash \
  && cd /opt/sim_ws \
- && colcon build --merge-install --cmake-args -DCMAKE_BUILD_TYPE=Release \
-      --event-handlers console_direct+ --parallel-workers 4 \
+ && MAKEFLAGS="-j2" colcon build --merge-install --cmake-args -DCMAKE_BUILD_TYPE=Release \
+      --event-handlers console_direct+ --parallel-workers 1 \
+      --packages-up-to ros_gz_bridge \
+ && MAKEFLAGS="-j4" colcon build --merge-install --cmake-args -DCMAKE_BUILD_TYPE=Release \
+      --event-handlers console_direct+ --parallel-workers 2 \
  && rm -rf /opt/sim_ws/build /opt/sim_ws/log
 
+
+# Small debugging and teleop utilities (kept last so they never invalidate the layers above)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ros-humble-teleop-twist-keyboard ros-humble-tf-transformations \
+    gdb vim tmux htop less iputils-ping net-tools \
+ && rm -rf /var/lib/apt/lists/*
