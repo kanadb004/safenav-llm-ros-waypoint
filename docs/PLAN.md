@@ -11,7 +11,7 @@ Status legend: `[ ]` not started, `[~]` in progress, `[x]` merged to main.
 | Phase | Name | Status | Issue | PR |
 |-------|------|--------|-------|----|
 | 0 | Scaffolding, environment, downloads | [x] | #1 | #2 |
-| 1 | Interfaces and annotation map node | [ ] | | |
+| 1 | Interfaces and annotation map node | [x] | #3 | #4 |
 | 2 | Simulation world, map, Nav2 bringup | [ ] | | |
 | 3 | LLM resolver prototype (Python, GBNF) | [ ] | | |
 | 4 | Synthetic benchmark and prompt sensitivity study | [ ] | | |
@@ -735,6 +735,10 @@ p90 < 3000 ms target on its own. Rules:
   sessions and hardware are Phase 10.
 - D8: Phi-3.5 mini ablation model is Q4_K_M, not Q8 (disk budget). Cloud GPT-4o ceiling is
   replaced by a Claude API ceiling row if an API key is available at Phase 9 time.
+- D9: `/semantic_markers` publishes one `TEXT_VIEW_FACING` marker per room (a name label at the
+  room pose), not the text-plus-arrow pair described in Phase 1's scope prose, so the marker
+  count matches the DoD assertion (`/semantic_markers` has N markers for N rooms) exactly. An
+  orientation arrow can be added in Phase 2 if useful for RViz review without changing this count.
 
 ## 15. Phase 9: model size ablation, final evaluation report
 
