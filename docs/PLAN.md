@@ -11,7 +11,7 @@ Status legend: `[ ]` not started, `[~]` in progress, `[x]` merged to main.
 | Phase | Name | Status | Issue | PR |
 |-------|------|--------|-------|----|
 | 0 | Scaffolding, environment, downloads | [x] | #1 | #2 |
-| 1 | Interfaces and annotation map node | [ ] | | |
+| 1 | Interfaces and annotation map node | [x] | #3 | #4 |
 | 2 | Simulation world, map, Nav2 bringup | [ ] | | |
 | 3 | LLM resolver prototype (Python, GBNF) | [ ] | | |
 | 4 | Synthetic benchmark and prompt sensitivity study | [ ] | | |
