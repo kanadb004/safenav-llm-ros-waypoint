@@ -1,0 +1,279 @@
+# SafeNav-LLM simulation facility layout.
+#
+# One floor, 20 m (x) by 14 m (y), a central east west corridor (y in [-2, 2])
+# with five rooms opening onto it on each side. Coordinates are in the "map" frame,
+# theta in radians. This file is the single source of geometry: gen_world.py renders
+# it to worlds/safenav_lab.sdf, gen_map.py rasterizes it to maps/safenav_lab.pgm/.yaml,
+# and annotate_map.py --from-yaml imports the "locations" list into room_annotations.json
+# so all three stay in sync.
+
+facility: safenav_lab
+frame: map
+resolution: 0.05
+bounds: {x_min: 0.0, x_max: 20.0, y_min: -7.0, y_max: 7.0}
+wall_height: 2.5
+wall_thickness: 0.15
+door_width: 1.2
+
+# Room rectangles. Every room borders the corridor (y in [-2, 2]) and has one door
+# in the corridor-facing wall, centered on the room.
+rooms:
+  - {name: reception,       x_min: 0.0,  x_max: 4.0,  y_min: 2.0, y_max: 7.0}
+  - {name: kitchen,         x_min: 4.0,  x_max: 8.5,  y_min: 2.0, y_max: 7.0}
+  - {name: meeting_room_a,  x_min: 8.5,  x_max: 13.0, y_min: 2.0, y_max: 7.0}
+  - {name: meeting_room_b,  x_min: 13.0, x_max: 17.0, y_min: 2.0, y_max: 7.0}
+  - {name: office,          x_min: 17.0, x_max: 20.0, y_min: 2.0, y_max: 7.0}
+  - {name: server_room,     x_min: 0.0,  x_max: 4.0,  y_min: -7.0, y_max: -2.0}
+  - {name: charging_dock,   x_min: 4.0,  x_max: 8.5,  y_min: -7.0, y_max: -2.0}
+  - {name: storage_room,    x_min: 8.5,  x_max: 13.0, y_min: -7.0, y_max: -2.0}
+  - {name: lab,             x_min: 13.0, x_max: 17.0, y_min: -7.0, y_max: -2.0}
+  - {name: workshop,        x_min: 17.0, x_max: 20.0, y_min: -7.0, y_max: -2.0}
+
+corridor: {x_min: 0.0, x_max: 20.0, y_min: -2.0, y_max: 2.0}
+
+# A few furniture boxes for RViz/Gazebo visual texture, not used by the occupancy grid.
+furniture:
+  - {name: reception_counter, x: 1.5, y: 4.6, w: 1.2, h: 0.6, yaw: 0.0}
+  - {name: kitchen_island,    x: 6.0, y: 4.6, w: 1.4, h: 0.7, yaw: 0.0}
+  - {name: meeting_table_a,   x: 10.75, y: 4.5, w: 2.0, h: 1.0, yaw: 0.0}
+  - {name: meeting_table_b,   x: 15.0, y: 4.5, w: 2.0, h: 1.0, yaw: 0.0}
+  - {name: office_desks,      x: 18.5, y: 4.6, w: 1.6, h: 0.6, yaw: 0.0}
+  - {name: server_racks,      x: 2.0, y: -4.6, w: 1.2, h: 0.6, yaw: 0.0}
+  - {name: dock_platform,     x: 6.25, y: -4.6, w: 1.0, h: 0.5, yaw: 0.0}
+  - {name: storage_shelves,   x: 10.75, y: -4.6, w: 1.8, h: 0.6, yaw: 0.0}
+  - {name: lab_benches,       x: 15.0, y: -4.6, w: 2.0, h: 0.6, yaw: 0.0}
+  - {name: workshop_bench,    x: 18.5, y: -4.6, w: 1.6, h: 0.6, yaw: 0.0}
+
+# Named locations, canonical name plus pose, matching room_annotations.json exactly
+# (imported with annotate_map.py --from-yaml). Room docking poses are placed 1 m in
+# from the corridor door of each room; sub locations sit inside their parent room or,
+# for main_entrance / fire_exit / water_cooler, in the corridor itself.
+locations:
+  - name: reception
+    x: 1.0
+    y: 6.0
+    theta: 0.0
+    parent: lab_floor_1
+    aliases: [front desk, lobby, entrance hall]
+    tags: [public, entry]
+  - name: kitchen
+    x: 6.0
+    y: 6.0
+    theta: 0.0
+    parent: lab_floor_1
+    aliases: [break room, kitchenette, canteen area]
+    tags: [food, break]
+  - name: meeting_room_a
+    x: 11.0
+    y: 6.0
+    theta: 0.0
+    parent: lab_floor_1
+    aliases: [conference room a, meeting room one, boardroom a]
+    tags: [meeting]
+  - name: meeting_room_b
+    x: 15.0
+    y: 6.0
+    theta: 0.0
+    parent: lab_floor_1
+    aliases: [conference room b, meeting room two, boardroom b]
+    tags: [meeting]
+  - name: office
+    x: 18.5
+    y: 6.0
+    theta: 3.14
+    parent: lab_floor_1
+    aliases: [office area, workspace, open office]
+    tags: [work]
+  - name: server_room
+    x: 2.0
+    y: -6.0
+    theta: 1.57
+    parent: lab_floor_1
+    aliases: [server closet, data room, server rack room]
+    tags: [utility, restricted]
+  - name: charging_dock
+    x: 6.0
+    y: -6.0
+    theta: 1.57
+    parent: lab_floor_1
+    aliases: [charging station, dock, charger]
+    tags: [utility, maintenance]
+  - name: storage_room
+    x: 10.5
+    y: -6.0
+    theta: 1.57
+    parent: lab_floor_1
+    aliases: [storage, docking bay, store room]
+    tags: [utility]
+  - name: lab
+    x: 15.0
+    y: -6.0
+    theta: 1.57
+    parent: lab_floor_1
+    aliases: [laboratory, research lab, lab space]
+    tags: [work, research]
+  - name: workshop
+    x: 18.5
+    y: -6.0
+    theta: 3.14
+    parent: lab_floor_1
+    aliases: [work room, fabrication room, maker space]
+    tags: [work, maintenance]
+  - name: main_entrance
+    x: 0.2
+    y: 6.5
+    theta: 0.0
+    parent: reception
+    aliases: [front door, main door, entry point]
+    tags: [entry]
+  - name: fire_exit
+    x: 19.5
+    y: 0.0
+    theta: 3.14
+    parent: workshop
+    aliases: [emergency exit, back door, escape route]
+    tags: [safety, exit]
+  - name: coffee_machine
+    x: 6.5
+    y: 5.0
+    theta: 0.0
+    parent: kitchen
+    aliases: [coffee maker, coffee station, espresso machine]
+    tags: [food]
+  - name: kitchen_sink
+    x: 5.5
+    y: 5.0
+    theta: 0.0
+    parent: kitchen
+    aliases: [sink, wash basin, dish sink]
+    tags: [food]
+  - name: reception_desk
+    x: 1.5
+    y: 5.0
+    theta: 0.0
+    parent: reception
+    aliases: [front counter, check in desk, help desk]
+    tags: [public]
+  - name: whiteboard
+    x: 11.5
+    y: 5.0
+    theta: 0.0
+    parent: meeting_room_a
+    aliases: [white board, presentation board, drawing board]
+    tags: [meeting]
+  - name: meeting_room_b_screen
+    x: 15.5
+    y: 5.0
+    theta: 0.0
+    parent: meeting_room_b
+    aliases: [projector screen, display screen b, tv screen]
+    tags: [meeting]
+  - name: printer
+    x: 18.0
+    y: 5.0
+    theta: 0.0
+    parent: office
+    aliases: [printing station, copier, print room]
+    tags: [work]
+  - name: office_desk_1
+    x: 17.5
+    y: 6.5
+    theta: 0.0
+    parent: office
+    aliases: [desk one, workstation one, cubicle one]
+    tags: [work]
+  - name: office_desk_2
+    x: 19.0
+    y: 6.5
+    theta: 0.0
+    parent: office
+    aliases: [desk two, workstation two, cubicle two]
+    tags: [work]
+  - name: water_cooler
+    x: 9.0
+    y: 0.0
+    theta: 0.0
+    parent: reception
+    aliases: [water dispenser, water fountain, hydration station]
+    tags: [public]
+  - name: server_rack_a
+    x: 1.5
+    y: -5.0
+    theta: 1.57
+    parent: server_room
+    aliases: [rack a, server bank a, first rack]
+    tags: [utility, restricted]
+  - name: server_rack_b
+    x: 2.5
+    y: -5.0
+    theta: 1.57
+    parent: server_room
+    aliases: [rack b, server bank b, second rack]
+    tags: [utility, restricted]
+  - name: battery_shelf
+    x: 6.5
+    y: -5.0
+    theta: 1.57
+    parent: charging_dock
+    aliases: [battery rack, spare batteries, battery storage]
+    tags: [utility, maintenance]
+  - name: storage_shelf_1
+    x: 10.0
+    y: -5.0
+    theta: 1.57
+    parent: storage_room
+    aliases: [shelf one, storage bay one, stock shelf one]
+    tags: [utility]
+  - name: storage_shelf_2
+    x: 11.0
+    y: -5.0
+    theta: 1.57
+    parent: storage_room
+    aliases: [shelf two, storage bay two, stock shelf two]
+    tags: [utility]
+  - name: lab_bench_1
+    x: 14.5
+    y: -5.0
+    theta: 1.57
+    parent: lab
+    aliases: [bench one, lab table one, test bench one]
+    tags: [work, research]
+  - name: lab_bench_2
+    x: 15.5
+    y: -5.0
+    theta: 1.57
+    parent: lab
+    aliases: [bench two, lab table two, test bench two]
+    tags: [work, research]
+  - name: workshop_bench
+    x: 18.0
+    y: -5.0
+    theta: 1.57
+    parent: workshop
+    aliases: [work bench, fabrication bench, build table]
+    tags: [work, maintenance]
+  - name: tool_cabinet
+    x: 19.0
+    y: -5.0
+    theta: 1.57
+    parent: workshop
+    aliases: [tool box, tool locker, tool storage]
+    tags: [utility, maintenance]
+
+edges:
+  - {from: reception, to: kitchen, relation: adjacent}
+  - {from: kitchen, to: meeting_room_a, relation: adjacent}
+  - {from: meeting_room_a, to: meeting_room_b, relation: adjacent}
+  - {from: meeting_room_b, to: office, relation: adjacent}
+  - {from: server_room, to: charging_dock, relation: adjacent}
+  - {from: charging_dock, to: storage_room, relation: adjacent}
+  - {from: storage_room, to: lab, relation: adjacent}
+  - {from: lab, to: workshop, relation: adjacent}
+  - {from: reception, to: server_room, relation: near}
+  - {from: kitchen, to: charging_dock, relation: near}
+  - {from: meeting_room_a, to: storage_room, relation: near}
+  - {from: meeting_room_b, to: lab, relation: near}
+  - {from: office, to: workshop, relation: near}
+  - {from: charging_dock, to: storage_room, relation: left_of}
+  - {from: storage_room, to: charging_dock, relation: right_of}
+  - {from: kitchen, to: reception, relation: right_of}
