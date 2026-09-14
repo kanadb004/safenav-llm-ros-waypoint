@@ -12,7 +12,7 @@ Status legend: `[ ]` not started, `[~]` in progress, `[x]` merged to main.
 |-------|------|--------|-------|----|
 | 0 | Scaffolding, environment, downloads | [x] | #1 | #2 |
 | 1 | Interfaces and annotation map node | [x] | #3 | #4 |
-| 2 | Simulation world, map, Nav2 bringup | [ ] | | |
+| 2 | Simulation world, map, Nav2 bringup | [x] | #5 | #6 |
 | 3 | LLM resolver prototype (Python, GBNF) | [ ] | | |
 | 4 | Synthetic benchmark and prompt sensitivity study | [ ] | | |
 | 5 | LLM resolver node in C++ (llama.cpp C API) | [ ] | | |
@@ -739,6 +739,20 @@ p90 < 3000 ms target on its own. Rules:
   room pose), not the text-plus-arrow pair described in Phase 1's scope prose, so the marker
   count matches the DoD assertion (`/semantic_markers` has N markers for N rooms) exactly. An
   orientation arrow can be added in Phase 2 if useful for RViz review without changing this count.
+- D10: TurtleBot4 Nav2 velocity limits in `safenav_sim/config/nav2_params.yaml` were raised from
+  the stock 0.26 m/s to 0.5 m/s (`FollowPath` and `velocity_smoother`) so the 10 room loopback
+  tour meets the Phase 2 five minute DoD target on the 20x14 m simulated facility. Simulation
+  only; the hardware nav2 profile in Phase 10 should use the real Create 3 speed limit.
+- D11: Gazebo Fortress could not be brought up with a spawned TurtleBot4 in the
+  `safenav-llm:humble` container: the world loads and is stable on its own, but robot spawn
+  (lidar/depth camera sensor creation) segfaults the Ignition Gazebo server in its software
+  (Ogre2/llvmpipe) renderer. See `docs/reports/phase-2-sim-world-nav2-bringup.md` for the crash
+  detail and a packaging bug found and fixed along the way (`turtlebot4_ignition_bringup`'s
+  `ignition.launch.py` silently drops the `world` argument through a broken `ros_ign_gazebo`
+  compatibility shim; `sim.launch.py` calls `ros_gz_sim`'s launch file directly instead). Per the
+  plan's own contingency, Gazebo was not pursued further this session; the loopback simulator is
+  the only working simulation mode until a future session revisits this, e.g. with GPU
+  passthrough.
 
 ## 15. Phase 9: model size ablation, final evaluation report
 
