@@ -1,0 +1,8 @@
+string name
+string[] aliases
+geometry_msgs/Pose pose
+string[] tags
+string parent                  # optional floor or zone
+---
+bool success
+string message
