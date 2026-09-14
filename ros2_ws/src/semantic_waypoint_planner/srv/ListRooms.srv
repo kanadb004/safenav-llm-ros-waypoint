@@ -1,0 +1,3 @@
+---
+string[] canonical_names
+string[] all_aliases           # flat list across all rooms
