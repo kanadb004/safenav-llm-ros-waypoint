@@ -1,0 +1,19 @@
+# Request
+string natural_language_command
+string[] candidate_room_names
+---
+# Response
+geometry_msgs/PoseStamped resolved_pose
+string matched_room_name
+float32 raw_confidence
+float32 calibrated_confidence
+string reasoning               # LLM chain of thought or error reason, logged to ros2 bag
+bool success
+# Extension fields (recorded deviation D3)
+float32 token_entropy          # nats, room level distribution
+float32 inference_ms
+string resolver_mode           # fast_path | llm_grammar | llm_free
+bool out_of_graph              # true only in llm_free mode when the name is not in the graph
+bool calibrator_loaded
+string[] top_k_rooms           # ranking, best first, at most 5
+float32[] top_k_scores
