@@ -26,3 +26,6 @@ __pycache__/
 
 # Secrets
 .env
+
+# Claude Code local settings
+.claude/
