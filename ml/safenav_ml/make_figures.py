@@ -180,9 +180,17 @@ def figure_f6() -> None:
     rates = [sum(by_cat[c]) / len(by_cat[c]) for c in cats]
     fig, ax = plt.subplots(figsize=(8, 4))
     ax.bar(cats, rates)
+    ax.set_xticks(range(len(cats)))
     ax.set_xticklabels(cats, rotation=30, ha="right")
     ax.set_ylabel("fast path hit rate")
+    ax.set_ylim(0, 1)
     ax.set_title(f"F6: fast path hit rate per category (N=500, {CAPTION_HW})")
+    if max(rates) == 0:
+        ax.text(
+            0.5, 0.5, "0% in every category\n(benchmark commands are all conversational;\n"
+            "none has the fast path's literal bare-name shape)",
+            transform=ax.transAxes, ha="center", va="center", fontsize=10, color="gray",
+        )
     _savefig(fig, "f6_fast_path_hit_rate.png")
 
 
