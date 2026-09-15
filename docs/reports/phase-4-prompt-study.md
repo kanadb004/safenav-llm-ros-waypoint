@@ -202,8 +202,8 @@ do about it.
 
 `fs0_t0.1_free` (same fewshot/temperature as the runner-up condition `fs0_t0.1_gbnf`, grammar
 off, v3 template) on the full 500: top1 0.672 (slightly higher than the grammar-on twin's
-0.664, within noise), top3
-0.782, **out-of-graph rate 0.010** (5/500), malformed_rate 0.0. This is below the 5 percent
+0.664, within noise), top3 0.782, **out-of-graph rate 0.010** (5/500), malformed_rate 0.0.
+This is below the 5 percent
 PLAN.md expected for grammar-off (deviation D24 applies): at temperature 0.1 this
 prompt/model pair mostly stays in-graph even unconstrained, consistent with Phase 3's D15
 finding for the 20-command adversarial smoke test. The grammar's value here is the
