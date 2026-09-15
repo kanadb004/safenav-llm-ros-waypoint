@@ -202,12 +202,17 @@ class ResolverCore:
         return self._grammar_str
 
     def resolve(
-        self, command: str, candidates: Optional[List[str]] = None, grammar_on: bool = True
+        self,
+        command: str,
+        candidates: Optional[List[str]] = None,
+        grammar_on: bool = True,
+        fast_path: bool = True,
+        max_tokens: Optional[int] = None,
     ) -> ResolveResult:
         start = time.monotonic()
         candidates = candidates or self.graph.canonical_names
 
-        fast_room = fast_path_match(self.graph, command)
+        fast_room = fast_path_match(self.graph, command) if fast_path else None
         if fast_room is not None:
             latency_ms = (time.monotonic() - start) * 1000.0
             result = ResolveResult(
@@ -224,15 +229,20 @@ class ResolverCore:
             self._apply_calibrator(result, command)
             return result
 
-        return self._resolve_llm(command, candidates, grammar_on, start)
+        return self._resolve_llm(command, candidates, grammar_on, start, max_tokens)
 
     def _resolve_llm(
-        self, command: str, candidates: List[str], grammar_on: bool, start: float
+        self,
+        command: str,
+        candidates: List[str],
+        grammar_on: bool,
+        start: float,
+        max_tokens: Optional[int] = None,
     ) -> ResolveResult:
         prompt = self.prompt_builder.build_prompt(command)
         kwargs = dict(
             prompt=prompt,
-            max_tokens=self.max_tokens,
+            max_tokens=max_tokens if max_tokens is not None else self.max_tokens,
             temperature=self.temperature,
             stop=["<|end|>"],
         )

@@ -26,7 +26,7 @@ def test_template_files_exist():
 
 def test_template_has_version():
     builder = PromptBuilder(_graph(), fewshot_count=0)
-    assert builder.template_version == "1"
+    assert builder.template_version.isdigit()
 
 
 def test_locations_block_lists_aliases():

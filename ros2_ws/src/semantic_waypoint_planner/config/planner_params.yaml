@@ -3,10 +3,10 @@ llm_resolver_node_py:
     model_path: "phi3-mini-4k-instruct.Q4_K_M.gguf"
     n_ctx: 2048
     n_threads: 8
-    temperature: 0.1
+    temperature: 0.3
     max_tokens: 256
     timeout_ms: 300000
     grammar_on: true
-    fewshot_count: 5
+    fewshot_count: 0
     prompt_template: "system_template.txt"
     allow_none: true

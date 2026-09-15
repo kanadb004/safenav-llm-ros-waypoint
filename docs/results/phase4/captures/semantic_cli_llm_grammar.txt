@@ -1,0 +1,31 @@
+{
+  "matched_room_name": "charging_dock",
+  "raw_confidence": 0.949999988079071,
+  "calibrated_confidence": 0.949999988079071,
+  "reasoning": "",
+  "success": true,
+  "token_entropy": 0.19851523637771606,
+  "inference_ms": 7360.43701171875,
+  "resolver_mode": "llm_grammar",
+  "out_of_graph": false,
+  "calibrator_loaded": false,
+  "top_k_rooms": [
+    "charging_dock",
+    "lab",
+    "reception",
+    "kitchen_sink",
+    "office"
+  ],
+  "top_k_scores": [
+    0.8058300018310547,
+    0.014137367717921734,
+    0.010603026486933231,
+    0.010603026486933231,
+    0.008482420817017555
+  ],
+  "resolved_pose": {
+    "frame_id": "map",
+    "x": 6.0,
+    "y": -6.0
+  }
+}

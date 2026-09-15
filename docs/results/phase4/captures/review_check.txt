@@ -1,0 +1,21 @@
+^Dchecked batch 0: 25 rows, 0 disagreements
+checked batch 1: 25 rows, 0 disagreements
+checked batch 2: 25 rows, 0 disagreements
+checked batch 3: 25 rows, 0 disagreements
+checked batch 4: 25 rows, 1 disagreements
+checked batch 5: 25 rows, 12 disagreements
+checked batch 6: 25 rows, 14 disagreements
+checked batch 7: 25 rows, 6 disagreements
+checked batch 8: 25 rows, 7 disagreements
+checked batch 9: 25 rows, 5 disagreements
+checked batch 10: 25 rows, 1 disagreements
+checked batch 11: 25 rows, 1 disagreements
+checked batch 12: 25 rows, 0 disagreements
+checked batch 13: 25 rows, 0 disagreements
+checked batch 14: 25 rows, 0 disagreements
+checked batch 15: 25 rows, 5 disagreements
+checked batch 16: 25 rows, 24 disagreements
+checked batch 17: 25 rows, 12 disagreements
+checked batch 18: 25 rows, 7 disagreements
+checked batch 19: 25 rows, 13 disagreements
+108 rows flagged by the checker -> /Users/kanadb/Work/safenav-llm-ros-waypoint/data/runs/gen_dataset/flagged.jsonl

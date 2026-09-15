@@ -1,0 +1,11 @@
+^D  cloud[ministral-8b-latest]: 0/500
+  cloud[ministral-8b-latest]: 50/500
+  cloud[ministral-8b-latest]: 100/500
+  cloud[ministral-8b-latest]: 150/500
+  cloud[ministral-8b-latest]: 200/500
+  cloud[ministral-8b-latest]: 250/500
+  cloud[ministral-8b-latest]: 300/500
+  cloud[ministral-8b-latest]: 350/500
+  cloud[ministral-8b-latest]: 400/500
+  cloud[ministral-8b-latest]: 450/500
+wrote data/runs/baselines/b4b.jsonl (500 rows)
