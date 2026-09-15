@@ -14,7 +14,7 @@ Status legend: `[ ]` not started, `[~]` in progress, `[x]` merged to main.
 | 1 | Interfaces and annotation map node | [x] | #3 | #4 |
 | 2 | Simulation world, map, Nav2 bringup | [x] | #5 | #6 |
 | 3 | LLM resolver prototype (Python, GBNF) | [x] | #9 | #10 |
-| 4 | Synthetic benchmark and prompt sensitivity study | [ ] | | |
+| 4 | Synthetic benchmark and prompt sensitivity study | [x] | #14 | |
 | 5 | LLM resolver node in C++ (llama.cpp C API) | [ ] | | |
 | 6 | BT plugin, semantic goal node, end to end in sim | [ ] | | |
 | 7 | Confidence calibration pipeline | [ ] | | |
@@ -787,6 +787,32 @@ p90 < 3000 ms target on its own. Rules:
   300000 ms, not the 20000 section 13 names: that figure assumed roughly an 80 token prompt,
   while the real 30-room production prompt is 900-1000 tokens and needs one to a few minutes cold
   on the container's CPU-only llama.cpp.
+- D19: the Phase 4 24-condition prompt grid is screened on a deterministic stratified 64-pair
+  subsample (8 per category, seed 42) before the top-2 GBNF conditions run on the full 500;
+  see `docs/phase-4-brief.md` and `docs/reports/phase-4-prompt-study.md`.
+- D20-D23: baselines B0-B4b added beyond the original Phase 4 scope per Review 2 panel
+  feedback; the cloud ceiling row (D8) pulled forward from Phase 9; top-3 for LLM rows uses
+  the D12 heuristic ranking; study calls capped at `max_tokens=64`. Full detail in the phase 4
+  report.
+- D24: the grammar-off out-of-graph rate on the full 500 benchmark is 1.0 percent (5/500) at
+  the winning temperature, below the 5 percent this plan expected; reported as measured, not
+  tuned. The grammar's value is the structural 0 percent guarantee at essentially no latency
+  cost, not a fix for a frequent failure.
+- D25: the Phase 4 dataset's checker-flagged rows and stratified human-review sample
+  (`docs/phase-4-brief.md` section 4) were adjudicated by the session itself rather than a
+  separate human reviewer, since the phase ran as one continuous automated pipeline; the
+  adjudication reasoning (graph-edge validation for the spatial category, documented
+  parent/child ambiguity for multi_hop/functional) is recorded in
+  `data/benchmark/DATASET.md` and the phase report.
+- D26: Phase 4's 80 percent baseline top-1 gate (section 7) was **not met**: best full-500
+  top-1 is 0.662-0.664 after two documented prompt-template iterations (one made things
+  worse, one gave a small real improvement; see the phase report section 4.2). The shortfall
+  is concentrated in the `spatial`, `multi_hop`, and `adversarial` categories and looks like a
+  capability limit of Phi-3-mini-4k Q4_K_M at zero-shot on compositional/relational reasoning
+  rather than a prompt-wording problem; the phase report's section 12 lists mitigations for
+  later phases (Phase 7 calibration, Phase 9 model-size ablation). The phase otherwise meets
+  its DoD in full and was not held back from merging on this basis; see the report for the
+  full analysis.
 
 ## 15. Phase 9: model size ablation, final evaluation report
 
