@@ -1,0 +1,42 @@
+^D  direct batch 0: got 26 pairs (usage: {'prompt_tokens': 1240, 'total_tokens': 2702, 'completion_tokens': 1462, 'prompt_tokens_details': {'cached_tokens': 0}, 'service_tier': 'standard'})
+  direct batch 1: got 25 pairs (usage: {'prompt_tokens': 1533, 'total_tokens': 3063, 'completion_tokens': 1530, 'prompt_tokens_details': {'cached_tokens': 0}, 'service_tier': 'standard'})
+  direct batch 2: got 25 pairs (usage: {'prompt_tokens': 1533, 'total_tokens': 3140, 'completion_tokens': 1607, 'prompt_tokens_details': {'cached_tokens': 0}, 'service_tier': 'standard'})
+  direct batch 3: got 26 pairs (usage: {'prompt_tokens': 1533, 'total_tokens': 3212, 'completion_tokens': 1679, 'prompt_tokens_details': {'cached_tokens': 0}, 'service_tier': 'standard'})
+direct: 102 generated -> 98 deduped -> 98 valid
+  alias batch 0: got 25 pairs (usage: {'prompt_tokens': 1242, 'total_tokens': 2629, 'completion_tokens': 1387, 'prompt_tokens_details': {'cached_tokens': 0}, 'service_tier': 'standard'})
+  alias batch 1: got 26 pairs (usage: {'prompt_tokens': 1466, 'total_tokens': 2968, 'completion_tokens': 1502, 'prompt_tokens_details': {'cached_tokens': 0}, 'service_tier': 'standard'})
+  alias batch 2: got 24 pairs (usage: {'prompt_tokens': 1466, 'total_tokens': 2799, 'completion_tokens': 1333, 'prompt_tokens_details': {'cached_tokens': 1380}, 'service_tier': 'standard'})
+  alias batch 3: got 25 pairs (usage: {'prompt_tokens': 1466, 'total_tokens': 2878, 'completion_tokens': 1412, 'prompt_tokens_details': {'cached_tokens': 1380}, 'service_tier': 'standard'})
+alias: 100 generated -> 92 deduped -> 92 valid
+  spatial batch 0: got 27 pairs (usage: {'prompt_tokens': 1246, 'total_tokens': 2915, 'completion_tokens': 1669, 'prompt_tokens_details': {'cached_tokens': 0}, 'service_tier': 'standard'})
+  spatial batch 1: got 26 pairs (usage: {'prompt_tokens': 1543, 'total_tokens': 3234, 'completion_tokens': 1691, 'prompt_tokens_details': {'cached_tokens': 0}, 'service_tier': 'standard'})
+  spatial batch 2: got 27 pairs (usage: {'prompt_tokens': 1543, 'total_tokens': 3259, 'completion_tokens': 1716, 'prompt_tokens_details': {'cached_tokens': 1508}, 'service_tier': 'standard'})
+  spatial batch 3: got 26 pairs (usage: {'prompt_tokens': 1543, 'total_tokens': 3242, 'completion_tokens': 1699, 'prompt_tokens_details': {'cached_tokens': 0}, 'service_tier': 'standard'})
+spatial: 106 generated -> 103 deduped -> 103 valid
+  functional batch 0: got 25 pairs (usage: {'prompt_tokens': 1242, 'total_tokens': 2718, 'completion_tokens': 1476, 'prompt_tokens_details': {'cached_tokens': 0}, 'service_tier': 'standard'})
+  functional batch 1: got 26 pairs (usage: {'prompt_tokens': 1557, 'total_tokens': 3037, 'completion_tokens': 1480, 'prompt_tokens_details': {'cached_tokens': 868}, 'service_tier': 'standard'})
+  functional batch 2: got 26 pairs (usage: {'prompt_tokens': 1557, 'total_tokens': 3059, 'completion_tokens': 1502, 'prompt_tokens_details': {'cached_tokens': 0}, 'service_tier': 'standard'})
+  functional batch 3: got 23 pairs (usage: {'prompt_tokens': 1557, 'total_tokens': 2912, 'completion_tokens': 1355, 'prompt_tokens_details': {'cached_tokens': 0}, 'service_tier': 'standard'})
+functional: 100 generated -> 98 deduped -> 98 valid
+  negation batch 0: got 27 pairs (usage: {'prompt_tokens': 1252, 'total_tokens': 3068, 'completion_tokens': 1816, 'prompt_tokens_details': {'cached_tokens': 868}, 'service_tier': 'standard'})
+  negation batch 1: got 28 pairs (usage: {'prompt_tokens': 1598, 'total_tokens': 3454, 'completion_tokens': 1856, 'prompt_tokens_details': {'cached_tokens': 0}, 'service_tier': 'standard'})
+  negation batch 2: got 26 pairs (usage: {'prompt_tokens': 1598, 'total_tokens': 3161, 'completion_tokens': 1563, 'prompt_tokens_details': {'cached_tokens': 0}, 'service_tier': 'standard'})
+  negation batch 3: got 26 pairs (usage: {'prompt_tokens': 1598, 'total_tokens': 3374, 'completion_tokens': 1776, 'prompt_tokens_details': {'cached_tokens': 1508}, 'service_tier': 'standard'})
+negation: 107 generated -> 101 deduped -> 101 valid
+  abbreviation batch 0: got 26 pairs (usage: {'prompt_tokens': 1252, 'total_tokens': 2757, 'completion_tokens': 1505, 'prompt_tokens_details': {'cached_tokens': 868}, 'service_tier': 'standard'})
+  abbreviation batch 1: got 27 pairs (usage: {'prompt_tokens': 1486, 'total_tokens': 3297, 'completion_tokens': 1811, 'prompt_tokens_details': {'cached_tokens': 868}, 'service_tier': 'standard'})
+  abbreviation batch 2: got 26 pairs (usage: {'prompt_tokens': 1486, 'total_tokens': 3119, 'completion_tokens': 1633, 'prompt_tokens_details': {'cached_tokens': 0}, 'service_tier': 'standard'})
+  abbreviation batch 3: got 25 pairs (usage: {'prompt_tokens': 1486, 'total_tokens': 3045, 'completion_tokens': 1559, 'prompt_tokens_details': {'cached_tokens': 0}, 'service_tier': 'standard'})
+abbreviation: 104 generated -> 102 deduped -> 99 valid
+  multi_hop batch 0: got 26 pairs (usage: {'prompt_tokens': 1262, 'total_tokens': 3382, 'completion_tokens': 2120, 'prompt_tokens_details': {'cached_tokens': 0}, 'service_tier': 'standard'})
+  multi_hop batch 1: got 27 pairs (usage: {'prompt_tokens': 1657, 'total_tokens': 3697, 'completion_tokens': 2040, 'prompt_tokens_details': {'cached_tokens': 868}, 'service_tier': 'standard'})
+  multi_hop batch 2: got 26 pairs (usage: {'prompt_tokens': 1657, 'total_tokens': 3630, 'completion_tokens': 1973, 'prompt_tokens_details': {'cached_tokens': 0}, 'service_tier': 'standard'})
+  multi_hop batch 3: got 26 pairs (usage: {'prompt_tokens': 1657, 'total_tokens': 3873, 'completion_tokens': 2216, 'prompt_tokens_details': {'cached_tokens': 1252}, 'service_tier': 'standard'})
+multi_hop: 105 generated -> 95 deduped -> 95 valid
+  adversarial batch 0: got 27 pairs (usage: {'prompt_tokens': 1281, 'total_tokens': 2817, 'completion_tokens': 1536, 'prompt_tokens_details': {'cached_tokens': 0}, 'service_tier': 'standard'})
+  adversarial batch 1: got 25 pairs (usage: {'prompt_tokens': 1575, 'total_tokens': 2989, 'completion_tokens': 1414, 'prompt_tokens_details': {'cached_tokens': 0}, 'service_tier': 'standard'})
+  adversarial batch 2: got 26 pairs (usage: {'prompt_tokens': 1575, 'total_tokens': 2972, 'completion_tokens': 1397, 'prompt_tokens_details': {'cached_tokens': 0}, 'service_tier': 'standard'})
+  adversarial batch 3: got 25 pairs (usage: {'prompt_tokens': 1575, 'total_tokens': 2967, 'completion_tokens': 1392, 'prompt_tokens_details': {'cached_tokens': 1508}, 'service_tier': 'standard'})
+  adversarial batch 4: got 26 pairs (usage: {'prompt_tokens': 1575, 'total_tokens': 3062, 'completion_tokens': 1487, 'prompt_tokens_details': {'cached_tokens': 0}, 'service_tier': 'standard'})
+adversarial: 129 generated -> 116 deduped -> 116 valid
+total valid candidates: 802, written to data/runs/gen_dataset/raw_candidates.jsonl
