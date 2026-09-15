@@ -323,6 +323,11 @@ Gate: end to end resolution service works in the container; features and ranking
 Goal: the 500 pair benchmark, the 50 adversarial set, and the 18 condition prompt study that
 selects the production prompt configuration.
 
+Read `docs/phase-4-brief.md` first: it refines this section with the Phase 3 latency numbers,
+a 3 to 5 hour execution budget with cut lines (screening on a stratified 64 pair subsample,
+full 500 only for the finalists), the baseline comparison the Review 2 panel asked for, a
+literature table with verified published numbers, the figure list, and the rubric mapping.
+
 Scope (`ml/safenav_ml/`, run on host with Metal):
 - `gen_dataset.py`: uses the Anthropic API (model `claude-sonnet-5`, temperature 1.0) to generate
   command and room pairs from `room_annotations.json` across the eight categories of the
