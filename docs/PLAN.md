@@ -329,7 +329,8 @@ full 500 only for the finalists), the baseline comparison the Review 2 panel ask
 literature table with verified published numbers, the figure list, and the rubric mapping.
 
 Scope (`ml/safenav_ml/`, run on host with Metal):
-- `gen_dataset.py`: uses the Mistral API (model `mistral-large-latest`, temperature 1.0) to generate
+- `gen_dataset.py`: uses the Mistral API (model `ministral-14b-latest`, the largest the free tier
+  allows, temperature 1.0) to generate
   command and room pairs from `room_annotations.json` across the eight categories of the
   specification (direct naming, alias use, spatial reference, functional description, negation,
   abbreviation, multi hop, adversarial). Prompts the API with the full graph (names, aliases,
@@ -725,8 +726,9 @@ p90 < 3000 ms target on its own. Rules:
 
 - D1: Gazebo Fortress instead of Gazebo Harmonic. Reason: the official TurtleBot4 simulator pairs
   ROS 2 Humble with Fortress; Harmonic is only paired with Jazzy. Humble matches the Jetson.
-- D2: Benchmark and persona datasets are generated with the Mistral API (`mistral-large-latest`,
-  chosen over the Anthropic API on cost after Phase 3; see `docs/phase-4-brief.md`) instead of the
+- D2: Benchmark and persona datasets are generated with the Mistral API (`ministral-14b-latest`,
+  the largest model on the free tier; chosen over the Anthropic API on cost after Phase 3; see
+  `docs/phase-4-brief.md`) instead of the
   GPT-4 API. Reported in the dataset card.
 - D3: `ResolveWaypoint.srv` response extended with entropy, timing, mode, ranking, and flags
   (section 12.2) so the calibration features and the ablation metrics come from the service itself.
