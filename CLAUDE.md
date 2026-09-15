@@ -51,7 +51,8 @@ logs/                     download and build logs (ignored)
 - Models: `models/phi3-mini-4k-instruct.Q4_K_M.gguf`, `models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf`,
   `models/phi3.5-mini-instruct.Q4_K_M.gguf`. Never re-download; never commit.
 - llama.cpp pin: tag `b10941` (commit 4a89937). llama-cpp-python 0.3.16.
-- Dataset generation uses the Anthropic API (`ANTHROPIC_API_KEY` in the environment), not GPT-4.
+- Dataset generation uses the Mistral API (`MISTRAL_API_KEY` in the environment, REST via
+  `requests`, no SDK), not GPT-4 and not the Anthropic API (cost).
 
 ## Session workflow (every phase)
 
@@ -100,7 +101,7 @@ Do not start the next phase in the same session unless asked.
   where practical. `colcon test` must pass before a PR.
 - LLM inference never runs on the ROS executor thread. Grammar constraints are applied at the
   sampler (GBNF), never as a post-hoc regex.
-- Keep secrets out of the repo. `ANTHROPIC_API_KEY` comes from the environment.
+- Keep secrets out of the repo. `MISTRAL_API_KEY` comes from the environment.
 - Deviations from the specification must be recorded in the phase report and in
   `docs/PLAN.md` under "Recorded deviations".
 - Prefer minimal diffs. Do not refactor code from earlier phases unless the current phase
