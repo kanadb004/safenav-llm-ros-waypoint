@@ -1,0 +1,20 @@
+{"command": "please navigate to the kitchen", "room": "kitchen", "confidence": 0.97}
+{"command": "take me to the front desk", "room": "reception", "confidence": 0.95}
+{"command": "I need to charge my battery, go to the charger", "room": "charging_dock", "confidence": 0.93}
+{"command": "head over to conference room a", "room": "meeting_room_a", "confidence": 0.96}
+{"command": "go stand next to the whiteboard so I can present", "room": "whiteboard", "confidence": 0.9}
+{"command": "drive to wherever the printing station is", "room": "printer", "confidence": 0.9}
+{"command": "go get some water from the fountain", "room": "water_cooler", "confidence": 0.88}
+{"command": "move to the room right next to server room a", "room": "server_room", "confidence": 0.8}
+{"command": "not the front door, the emergency exit please", "room": "fire_exit", "confidence": 0.85}
+{"command": "go to the room where the robot usually docks", "room": "charging_dock", "confidence": 0.87}
+{"command": "head to the second lab bench", "room": "lab_bench_2", "confidence": 0.92}
+{"command": "check out the storage shelf on the left, shelf one", "room": "storage_shelf_1", "confidence": 0.88}
+{"command": "go to my desk, cubicle two", "room": "office_desk_2", "confidence": 0.9}
+{"command": "navigate near the coffee maker", "room": "coffee_machine", "confidence": 0.93}
+{"command": "please go wash this in the sink", "room": "kitchen_sink", "confidence": 0.86}
+{"command": "go to the workshop, not the storage room", "room": "workshop", "confidence": 0.89}
+{"command": "take me to the tool locker", "room": "tool_cabinet", "confidence": 0.9}
+{"command": "go to rack b in the server room", "room": "server_rack_b", "confidence": 0.84}
+{"command": "go to the spare battery storage", "room": "battery_shelf", "confidence": 0.88}
+{"command": "go to the cafeteria", "room": "none", "confidence": 0.6}
