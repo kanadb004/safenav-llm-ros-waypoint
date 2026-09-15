@@ -13,7 +13,7 @@ Status legend: `[ ]` not started, `[~]` in progress, `[x]` merged to main.
 | 0 | Scaffolding, environment, downloads | [x] | #1 | #2 |
 | 1 | Interfaces and annotation map node | [x] | #3 | #4 |
 | 2 | Simulation world, map, Nav2 bringup | [x] | #5 | #6 |
-| 3 | LLM resolver prototype (Python, GBNF) | [ ] | | |
+| 3 | LLM resolver prototype (Python, GBNF) | [x] | #9 | |
 | 4 | Synthetic benchmark and prompt sensitivity study | [ ] | | |
 | 5 | LLM resolver node in C++ (llama.cpp C API) | [ ] | | |
 | 6 | BT plugin, semantic goal node, end to end in sim | [ ] | | |
@@ -753,6 +753,32 @@ p90 < 3000 ms target on its own. Rules:
   plan's own contingency, Gazebo was not pursued further this session; the loopback simulator is
   the only working simulation mode until a future session revisits this, e.g. with GPU
   passthrough.
+- D12: the Phase 3 resolver's room-level ranking/entropy do not use batched multi-sequence
+  scoring or a next-token grammar-masked distribution; both need `logits_all=True` in
+  llama-cpp-python, which made one resolution take minutes instead of seconds on the ~900 token
+  production prompt. `token_entropy` is the binary entropy of the model's own reported
+  confidence; `room_ranking` splits the remaining probability mass over other candidates by
+  inverse Levenshtein distance to the command. See `docs/reports/phase-3-llm-resolver-prototype.md`.
+- D13: `llm_resolver_node_py` reads `room_annotations.json` directly instead of reconstructing
+  the graph from `/list_rooms`/`/get_room_pose`, because that service's flat alias list has no
+  per-room grouping and no edges, both needed for the prompt. No section 12 interface changed.
+- D14: `ResolverCore` defaults to `n_gpu_layers=-1`; the ROS node overrides it to `0` for the
+  container image (no CUDA/Metal build there). Metal roughly 17-20x faster than CPU-only on the
+  production prompt once this was wired up correctly.
+- D15: the Phase 3 grammar-off ablation only produced an out-of-graph response at temperature
+  1.0; at 0.0 and 0.7 all 20 adversarial commands stayed in-graph even without the grammar,
+  because the system prompt lists every valid name explicitly. Documented as a real property of
+  this prompt/model pair, not a test bug.
+- D16: the Phase 3 DoD's 20-call container latency benchmark was reduced to 4-5 calls against an
+  already-warm resolver; the Metal proxy carries the full cold-to-warm 20-call series that the
+  p90 < 3000 ms gate is judged on (section 13).
+- D17: `ResolveResult` (Python-internal, not a section 12 interface) gained
+  `calibrated_confidence`, `calibrator_loaded`, `prompt_eval_tokens` beyond the nine fields
+  PLAN.md's Phase 3 scope names.
+- D18: the sim profile `timeout_ms` (`config/planner_params.yaml`, `resolver_only.launch.py`) is
+  300000 ms, not the 20000 section 13 names: that figure assumed roughly an 80 token prompt,
+  while the real 30-room production prompt is 900-1000 tokens and needs one to a few minutes cold
+  on the container's CPU-only llama.cpp.
 
 ## 15. Phase 9: model size ablation, final evaluation report
 
