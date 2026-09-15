@@ -83,12 +83,21 @@ install(TARGETS annotation_graph
 # ---------------------------------------------------------------------------
 install(FILES
   ${PROJECT_NAME}/graph.py
+  ${PROJECT_NAME}/grammar.py
+  ${PROJECT_NAME}/prompt.py
+  ${PROJECT_NAME}/resolver_core.py
   DESTINATION ${PYTHON_INSTALL_DIR}/${PROJECT_NAME}
 )
 
 install(PROGRAMS
   scripts/annotate_map.py
+  scripts/llm_resolver.py
   DESTINATION lib/${PROJECT_NAME}
+)
+install(PROGRAMS
+  scripts/semantic_cli.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME semantic_cli
 )
 
 install(DIRECTORY
@@ -116,9 +125,13 @@ if(BUILD_TESTING)
   ament_add_pytest_test(test_python_core test/python
     APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}
     # the globally installed launch_testing and launch_ros pytest11 plugins are incompatible
-    # with this pytest version's hookspec and break collection even for plain tests.
-    ENV "PYTEST_ADDOPTS=-p no:launch_testing -p no:launch_ros"
+    # with this pytest version's hookspec and break collection even for plain tests. "slow"
+    # tests need the real GGUF model and are excluded from colcon test; run them with
+    # `pytest -m slow` directly (see DoD in docs/PLAN.md Phase 3).
+    ENV "PYTEST_ADDOPTS=-p no:launch_testing -p no:launch_ros -m \"not slow\""
   )
+
+  add_launch_test(test/test_resolver_only_launch.py TIMEOUT 600)
 endif()
 
 ament_export_include_directories(include)
