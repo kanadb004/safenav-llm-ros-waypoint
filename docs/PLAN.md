@@ -13,7 +13,7 @@ Status legend: `[ ]` not started, `[~]` in progress, `[x]` merged to main.
 | 0 | Scaffolding, environment, downloads | [x] | #1 | #2 |
 | 1 | Interfaces and annotation map node | [x] | #3 | #4 |
 | 2 | Simulation world, map, Nav2 bringup | [x] | #5 | #6 |
-| 3 | LLM resolver prototype (Python, GBNF) | [x] | #9 | |
+| 3 | LLM resolver prototype (Python, GBNF) | [x] | #9 | #10 |
 | 4 | Synthetic benchmark and prompt sensitivity study | [ ] | | |
 | 5 | LLM resolver node in C++ (llama.cpp C API) | [ ] | | |
 | 6 | BT plugin, semantic goal node, end to end in sim | [ ] | | |
