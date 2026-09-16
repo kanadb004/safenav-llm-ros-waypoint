@@ -219,15 +219,15 @@ JSON grammar and occasionally runs closer to the 64-token cap.
 Full 500, all section-5 metrics. "Ours" is the production selection `fs0_t0.3_gbnf`
 (fewshot=0, temperature=0.3, grammar on, v3 template).
 
-| System | top1 | top3 | false_accept | false_abstain | p50 latency |
-|---|---|---|---|---|---|
-| B0 exact/alias | 0.090 | 0.000 | 0.000 | 1.000 | 0.012 ms |
-| B1 fuzzy match | 0.382 | 0.668 | 0.844 | 0.088 | 0.456 ms |
-| B2 TF-IDF retrieval | 0.470 | 0.785 | 0.800 | 0.103 | 1.509 ms |
-| B3 (= grammar-off twin, section 4.3) | 0.672 | 0.782 | 0.600 | 0.000 | 3395 ms |
-| B4 cloud, ministral-14b-latest | 0.706 | 0.701 | 0.244 | 0.099 | 769 ms |
-| B4b cloud, ministral-8b-latest | 0.738 | 0.760 | 0.489 | 0.026 | 1031 ms |
-| **Ours (SafeNav-LLM, on device, grammar on)** | **0.662** | **0.780** | **0.600** | **0.002** | **2230 ms** |
+| System | Measured on our 500? | top1 | top3 | false_accept | false_abstain | p50 latency |
+|---|---|---|---|---|---|---|
+| B0 exact/alias | yes | 0.090 | 0.000 | 0.000 | 1.000 | 0.012 ms |
+| B1 fuzzy match | yes | 0.382 | 0.668 | 0.844 | 0.088 | 0.456 ms |
+| B2 TF-IDF retrieval | yes | 0.470 | 0.785 | 0.800 | 0.103 | 1.509 ms |
+| B3 (= grammar-off twin, section 4.3) | yes | 0.672 | 0.782 | 0.600 | 0.000 | 3395 ms |
+| B4 cloud, ministral-14b-latest | yes | 0.706 | 0.701 | 0.244 | 0.099 | 769 ms |
+| B4b cloud, ministral-8b-latest | yes | 0.738 | 0.760 | 0.489 | 0.026 | 1031 ms |
+| **Ours (SafeNav-LLM, on device, grammar on)** | **yes** | **0.662** | **0.780** | **0.600** | **0.002** | **2230 ms** |
 
 Reading this honestly: both cloud ceilings (B4, B4b) beat the on-device model by 4-8 top-1
 points, which is expected of larger, better-trained models with no quantization; B4b (the
@@ -242,6 +242,40 @@ property of the prompt/model, not the grammar; Phase 7's calibrated confidence t
 the intended mechanism for cutting this down further (raw model output alone is not expected
 to be the final safety gate). fast_path_hit_rate is 0 for every row/system in this table
 because none of the 500 commands has the fast path's required literal shape (section 7).
+
+### 5.1 Published numbers on the same robot/simulator/Nav2 stack (Das et al. 2026)
+
+The rows below are **not measured on our 500-pair benchmark**; they are the published numbers
+from Das, Hussain & Nawaz 2026 (Sensors 26(2):608, https://doi.org/10.3390/s26020608, section
+6/T5), the only paper in the literature table that used the same robot, simulator, and Nav2
+stack as this project. They are included directly in T4 (rather than only in T5) because they
+are the closest thing to a real external baseline this project has; they are still not
+apples-to-apples with the rows above, for the reasons in the "differs from ours" column.
+`top1` here is their reported "success" (parse into a valid navigation intent, N=200-250
+commands per model, three complexity levels, retries included); `p50 latency` is their
+reported mean end-to-end LLM latency (they report mean, not p50, the closest available
+number). `top3`, `false_accept`, and `false_abstain` were not reported and are left blank
+rather than estimated.
+
+| System | Measured on our 500? | top1 (their "success") | top3 | false_accept | false_abstain | latency (their mean) | Differs from ours |
+|---|---|---|---|---|---|---|---|
+| claude-3.7-sonnet | no, published | 1.000 | -- | -- | -- | 2712 ms | cloud, no closed set, no calibration, retries folded into success |
+| gpt-4o | no, published | 1.000 | -- | -- | -- | 1188 ms | same |
+| gemini-2.5-pro | no, published | 1.000 | -- | -- | -- | 9850 ms | same |
+| deepseek-r1 | no, published | 1.000 | -- | -- | -- | 9567 ms | same |
+| gpt-5 | no, published | 1.000 | -- | -- | -- | 12136 ms | same |
+| llama-3.3-70b (Groq) | no, published | 0.996 | -- | -- | -- | 1818 ms | same |
+| gpt-3.5-turbo | no, published | 0.995 | -- | -- | -- | 968 ms | same |
+| mistral-7b-instruct | no, published | 0.940 | -- | -- | -- | 1505 ms | same; closest in size/class to our on-device model |
+
+Even the weakest cloud model in their study (`mistral-7b-instruct`, 94.0 percent) clears our
+80 percent gate and our measured 0.662-0.706 range, at 0.97-1.5 s mean latency versus our
+2.2-3.4 s p50. Read together with T4's B4/B4b rows (also cloud, but run on our own benchmark
+with our own metrics), the pattern is consistent: cloud APIs of any size in this class
+outperform the on-device Q4_K_M model on this task, and the "success" metric in Das et al. is
+measuring something slightly easier than our `top1` (it folds in up to 3 retries on malformed
+output, section 3 and 6.3 above), so their numbers are, if anything, a generous upper bound
+rather than a strictly comparable one.
 
 ## 6. Literature comparison (T5)
 
