@@ -15,12 +15,14 @@ import json
 import os
 import re
 import sys
+from typing import Optional
 
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 _PKG_ROOT = os.path.join(_REPO_ROOT, "ros2_ws", "src", "semantic_waypoint_planner")
 sys.path.insert(0, _PKG_ROOT)
 
 from semantic_waypoint_planner.graph import INVERSE_RELATIONS, AnnotationGraph  # noqa: E402
+from semantic_waypoint_planner.relations import resolve_relation  # noqa: E402
 
 MAP_PATH = os.path.join(_PKG_ROOT, "maps", "room_annotations.json")
 BENCHMARK_PATH = os.path.join(_REPO_ROOT, "data", "benchmark", "synthetic_500.jsonl")
@@ -54,14 +56,19 @@ def _keywords(text: str):
     return {_singular(w) for w in words if len(w) >= 4 and w not in _STOPWORDS}
 
 
-def detect_anchors(graph: AnnotationGraph, command: str, expected: str):
+def detect_anchors(graph: AnnotationGraph, command: str, expected: Optional[str] = None):
     """Word-level (not phrase-level) overlap, singularized, so "servers are kept" still
     matches "server_room"/"server rack room" even though no alias contains that exact
-    phrase. This is the same lenient scoring relations.py's own disambiguation uses."""
+    phrase. This is the same lenient scoring relations.py's own disambiguation uses.
+
+    ``expected`` excludes that room from the candidate set, which is appropriate for the
+    model-accuracy ceiling check (section 2 of the phase 5 report) but not for the phase 5A
+    relabel rule (8A.2), which must be label-blind; that caller passes ``expected=None``.
+    """
     command_words = _keywords(command)
     anchors = []
     for room in graph.rooms:
-        if room.name == expected:
+        if expected is not None and room.name == expected:
             continue
         room_words = _keywords(room.name.replace("_", " "))
         for alias in room.aliases:
