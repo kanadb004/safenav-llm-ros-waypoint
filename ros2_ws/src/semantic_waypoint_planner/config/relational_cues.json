@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "description": "Frozen lexical cue list for Phase 5A cue gating (PLAN.md section 8A.1). Derived from the actual command text of the spatial and multi_hop rows in data/benchmark/synthetic_500.jsonl, not invented from intuition. A command containing none of these (case-insensitive substring match) is resolved against the v1 single-field grammar with the hop suppressed. Frozen before any accuracy measurement; do not edit based on downstream results without recording a deviation.",
+  "pre_check": {
+    "recall_spatial_multi_hop": 0.9846153846153847,
+    "false_positive_rate_direct_alias_negation_abbreviation": 0.015384615384615385,
+    "recall_gate": 0.85,
+    "verdict": "pass"
+  },
+  "cues": [
+    "next to",
+    "beside",
+    "left of",
+    "right of",
+    "near",
+    "adjacent",
+    "with the",
+    "that has",
+    "closest to",
+    "on its left",
+    "on its right",
+    "on the left",
+    "on the right",
+    "other side",
+    "opposite"
+  ]
+}

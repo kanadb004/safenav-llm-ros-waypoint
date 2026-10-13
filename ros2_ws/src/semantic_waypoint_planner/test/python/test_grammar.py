@@ -1,7 +1,7 @@
 import llama_cpp
 import pytest
 
-from semantic_waypoint_planner.grammar import RELATION_VALUES, build_grammar
+from semantic_waypoint_planner.grammar import RELATION_VALUES, build_grammar, build_grammar_v1
 
 NAMES = ["charging_dock", "kitchen", "server_room"]
 
@@ -64,3 +64,22 @@ def test_out_of_relation_set_value_absent():
     grammar_str = build_grammar(NAMES, allow_none=True)
     assert _literal("north_of") not in grammar_str
     assert _literal("inside") not in grammar_str
+
+
+def test_build_grammar_v1_has_no_relation_field():
+    grammar_str = build_grammar_v1(NAMES, allow_none=True)
+    assert '\\"relation\\"' not in grammar_str
+    for relation in ("left_of", "right_of", "adjacent", "near", "within"):
+        assert _literal(relation) not in grammar_str
+
+
+def test_build_grammar_v1_has_room_and_confidence():
+    grammar_str = build_grammar_v1(NAMES, allow_none=True)
+    assert _literal("charging_dock") in grammar_str
+    assert '\\"room\\"' in grammar_str
+    assert '\\"confidence\\"' in grammar_str
+
+
+def test_build_grammar_v1_compiles():
+    grammar_str = build_grammar_v1(NAMES, allow_none=True)
+    llama_cpp.LlamaGrammar.from_string(grammar_str, verbose=False)

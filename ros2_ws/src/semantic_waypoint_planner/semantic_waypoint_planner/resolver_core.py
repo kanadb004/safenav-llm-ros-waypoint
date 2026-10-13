@@ -13,10 +13,10 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 from .backends import Backend, build_backend
-from .grammar import RELATION_VALUES, build_grammar
+from .grammar import RELATION_VALUES, build_grammar, build_grammar_v1
 from .graph import AnnotationGraph
 from .prompt import DEFAULT_FEWSHOT_PATH, DEFAULT_TEMPLATE_PATH, PromptBuilder
-from .relations import resolve_relation
+from .relations import DEFAULT_CUES_PATH, has_relational_cue, load_cues, resolve_relation
 
 VERB_PHRASES = ["go to", "navigate to", "head to", "take me to", "move to"]
 _WS_RE = re.compile(r"\s+")
@@ -110,6 +110,9 @@ class ResolveResult:
     anchor_room: str = ""
     relation: str = "none"
     n_relation_targets: int = 0
+    # Phase 5A (8A.1, D38): which grammar actually went to the backend. "fast_path" when no
+    # LLM call was made at all.
+    grammar_version: str = "v2"
 
 
 class Calibrator:
@@ -168,6 +171,8 @@ class ResolverCore:
         n_gpu_layers: int = -1,
         backend: str = "inprocess",
         backend_url: str = "http://host.docker.internal:8080",
+        cue_gating: bool = True,
+        cues_path: str = DEFAULT_CUES_PATH,
     ):
         self.n_ctx = n_ctx
         self.n_threads = n_threads
@@ -180,6 +185,11 @@ class ResolverCore:
         self.calibrator = Calibrator(calibrator_path)
         self.last_prefix_tokens = 0
         self.backend_name = backend
+        # Phase 5A (8A.1, D38): a cue-free command never needed the hop, so it is resolved
+        # against the smaller v1 grammar with the hop structurally impossible, rather than
+        # trusting the model to emit relation: "none" on its own (section 5.1's regression).
+        self.cue_gating = cue_gating
+        self._cues = load_cues(cues_path) if cue_gating else []
 
         self._backend: Backend = build_backend(
             backend,
@@ -198,12 +208,20 @@ class ResolverCore:
         self.prompt_builder = PromptBuilder(
             graph, self.prompt_template, self.fewshot_path, self.fewshot_count
         )
+        # Both grammars are built once per graph version and cached; selection is per request
+        # (8A.1). v2 is kept as self._grammar_str for backward compatibility with callers that
+        # read it directly (e.g. the Phase 3 parity test) and always reflects the v2 string.
         self._grammar_str = build_grammar(graph.canonical_names, allow_none=self.allow_none)
+        self._grammar_str_v1 = build_grammar_v1(graph.canonical_names, allow_none=self.allow_none)
         self._backend.reset()
 
     @property
     def grammar_str(self) -> str:
         return self._grammar_str
+
+    @property
+    def grammar_str_v1(self) -> str:
+        return self._grammar_str_v1
 
     def resolve(
         self,
@@ -229,6 +247,7 @@ class ResolverCore:
                 mode="fast_path",
                 out_of_graph=False,
                 raw_text="",
+                grammar_version="fast_path",
             )
             self._apply_calibrator(result, command)
             return result
@@ -243,10 +262,14 @@ class ResolverCore:
         start: float,
         max_tokens: Optional[int] = None,
     ) -> ResolveResult:
+        cued = has_relational_cue(command, self._cues) if self.cue_gating else True
+        grammar_version = "v2" if cued else "v1"
+        grammar_str = self._grammar_str if cued else self._grammar_str_v1
+
         prompt = self.prompt_builder.build_prompt(command)
         raw_text, _backend_ms, prompt_eval_tokens = self._backend.complete(
             prompt,
-            self._grammar_str if grammar_on else None,
+            grammar_str if grammar_on else None,
             max_tokens=max_tokens if max_tokens is not None else self.max_tokens,
             temperature=self.temperature,
             stop=["<|end|>"],
@@ -266,6 +289,12 @@ class ResolverCore:
             # relation set is a fixed small vocabulary, not the thing this flag measures.
             out_of_graph = anchor is None or (anchor != "none" and anchor not in self.graph.canonical_names)
         if relation not in RELATION_VALUES:
+            relation = "none"
+        if not cued:
+            # Cue gating (8A.1): no relational cue in the command text means the hop is
+            # structurally suppressed regardless of what the grammar allowed, not just
+            # discouraged. The v1 grammar already cannot emit "relation"; this also covers
+            # grammar_on=False free-form output that happens to contain one.
             relation = "none"
 
         anchor_room = ""
@@ -294,6 +323,7 @@ class ResolverCore:
             anchor_room=anchor_room,
             relation=relation,
             n_relation_targets=n_relation_targets,
+            grammar_version=grammar_version,
         )
         self._apply_calibrator(result, command)
         return result

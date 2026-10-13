@@ -1,4 +1,4 @@
-"""Relational decomposition traversal (PLAN.md section 8.1, D29).
+"""Relational decomposition traversal (PLAN.md section 8.1, D29) and cue gating (8A.1, D38).
 
 The model names an anchor room and a spatial relation; this module performs the actual hop
 over the annotation graph's edges in code. ROS free, ``AnnotationGraph`` is the only
@@ -7,14 +7,48 @@ dependency, so it is exercised the same way on the host and inside the resolver 
 
 from __future__ import annotations
 
+import json
+import os
 import re
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 from .graph import INVERSE_RELATIONS, AnnotationGraph
 
 RELATIONS = ("none", "left_of", "right_of", "adjacent", "near", "within")
 
 _WS_RE = re.compile(r"\s+")
+
+
+def _default_cues_path() -> str:
+    # Mirrors prompt.py's _default_prompt_dir: ament's share directory when installed, the
+    # source tree's config/ otherwise, since this module has no ROS imports of its own.
+    try:
+        from ament_index_python.packages import get_package_share_directory
+
+        return os.path.join(
+            get_package_share_directory("semantic_waypoint_planner"), "config", "relational_cues.json"
+        )
+    except Exception:
+        package_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        return os.path.join(package_dir, "config", "relational_cues.json")
+
+
+DEFAULT_CUES_PATH = _default_cues_path()
+
+
+def load_cues(path: str = DEFAULT_CUES_PATH) -> List[str]:
+    with open(path, "r", encoding="utf-8") as f:
+        return list(json.load(f)["cues"])
+
+
+def has_relational_cue(command: str, cues: Optional[List[str]] = None) -> bool:
+    """True if ``command`` contains at least one frozen cue phrase (8A.1, case-insensitive
+    substring match). Cue-free commands are resolved against the v1 grammar with the hop
+    suppressed; this function makes no other decision and sees only the command text."""
+    if cues is None:
+        cues = load_cues()
+    lowered = command.lower()
+    return any(cue in lowered for cue in cues)
 
 
 def _normalize(text: str) -> str:

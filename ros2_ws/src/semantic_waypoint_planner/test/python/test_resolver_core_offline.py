@@ -2,6 +2,7 @@
 
 import pytest
 
+from semantic_waypoint_planner import resolver_core as resolver_core_module
 from semantic_waypoint_planner.graph import AnnotationGraph
 from semantic_waypoint_planner.resolver_core import (
     ResolveResult,
@@ -107,6 +108,70 @@ def test_parse_answer_fully_garbled_defaults():
     assert room is None
     assert relation == "none"
     assert confidence == 0.0
+
+
+class _FakeBackend:
+    """Records every grammar string it is handed; returns a canned, well-formed v2 answer
+    regardless, since the point of this fake is to observe grammar selection, not parsing."""
+
+    def __init__(self, *args, **kwargs):
+        self.calls = []
+
+    def complete(self, prompt, grammar, **kwargs):
+        self.calls.append(grammar)
+        return '{"room": "kitchen", "relation": "none", "confidence": 0.9}', 1.0, 10
+
+    def reset(self):
+        pass
+
+
+@pytest.fixture()
+def fake_backend_core(monkeypatch):
+    fake = _FakeBackend()
+    monkeypatch.setattr(resolver_core_module, "build_backend", lambda *a, **k: fake)
+    core = ResolverCore(model_path="unused", graph=_graph(), fewshot_count=0)
+    return core, fake
+
+
+# ---------------------------------------------------------------------------
+# Cue gating grammar selection (PLAN.md 8A.1, D38)
+# ---------------------------------------------------------------------------
+
+def test_cue_free_command_takes_v1_grammar(fake_backend_core):
+    core, fake = fake_backend_core
+    core.resolve("go to the server room", fast_path=False)
+    assert len(fake.calls) == 1
+    assert fake.calls[0] == core.grammar_str_v1
+    assert fake.calls[0] != core.grammar_str
+
+
+def test_cued_command_takes_v2_grammar(fake_backend_core):
+    core, fake = fake_backend_core
+    core.resolve("go to the room to the left of the kitchen", fast_path=False)
+    assert len(fake.calls) == 1
+    assert fake.calls[0] == core.grammar_str
+    assert fake.calls[0] != core.grammar_str_v1
+
+
+def test_cue_free_command_forces_relation_none(fake_backend_core):
+    core, _fake = fake_backend_core
+    result = core.resolve("go to the server room", fast_path=False)
+    assert result.relation == "none"
+    assert result.grammar_version == "v1"
+
+
+def test_cued_command_reports_v2_grammar_version(fake_backend_core):
+    core, _fake = fake_backend_core
+    result = core.resolve("go to the room to the left of the kitchen", fast_path=False)
+    assert result.grammar_version == "v2"
+
+
+def test_cue_gating_disabled_always_uses_v2(monkeypatch):
+    fake = _FakeBackend()
+    monkeypatch.setattr(resolver_core_module, "build_backend", lambda *a, **k: fake)
+    core = ResolverCore(model_path="unused", graph=_graph(), fewshot_count=0, cue_gating=False)
+    core.resolve("go to the server room", fast_path=False)
+    assert fake.calls[0] == core.grammar_str
 
 
 def test_features_vector_order():

@@ -22,7 +22,7 @@ Status legend: `[ ]` not started, `[~]` in progress, `[x]` merged to main.
 | 3 | LLM resolver prototype (Python, GBNF) | [x] | #9 | #10 |
 | 4 | Synthetic benchmark and prompt sensitivity study | [x] | #14 | #15 |
 | 5 | Relational decomposition and resolver backend | [x] | #16 | #17 |
-| 5A | Corrective: cue gating, benchmark re-audit, latency re-measure | [ ] | | |
+| 5A | Corrective: cue gating, benchmark re-audit, latency re-measure | [x] | #18 | #19 |
 | 6 | BT plugin, semantic goal node, end to end in sim | [ ] | | |
 | 7 | Confidence calibration pipeline | [ ] | | |
 | 8 | E2E validation, ablations, final results | [ ] | | |
@@ -557,6 +557,14 @@ was kept when v2 replaced it (`docs/archive/`) and the way section 8 was kept wh
 
 Gate: top-1 >= 0.76 on corrected labels, or a documented stop per the rule above.
 
+**Outcome: merged (#19), closed below gate at top-1 0.732 (above the 0.70 stop floor).**
+Cue gating recovered 49/68 of Phase 5's section 5.1 regression and restored
+`direct`/`alias`/`negation`/`abbreviation` above the 0.85 no-regression floor. Cold latency
+(3737 ms traffic-weighted p90) is roughly half of Phase 5's sustained-session figure but still
+misses the 3000 ms gate; the grammar-size hypothesis behind that gate miss is refuted by the
+cold per-token measurement. Per the stop rule, not iterated further. Report:
+`docs/reports/phase-5a-corrective.md`.
+
 ## 9. Phase 6: BT plugin, semantic goal node, end to end in simulation
 
 Goal: `SemanticNavigateToPose` as a native Nav2 BT node, the operator facing goal node, the
@@ -1014,6 +1022,30 @@ the Phase 5A corrective replan.
   cost and the held-out slice was already shown to track the full-500 number within 1-2
   points. Phi-3.5 mini scored 7 points worse than production, not within the 2-point
   promotion margin, which the 100-row sample is decisive enough to show.
+
+D40 to D44 were recorded during Phase 5A; see `docs/reports/phase-5a-corrective.md` section 8.
+
+- **D40: cue gating recovers 49 of the 68 section 5.1 regression rows (72 percent), not all
+  of them.** The remaining 19 contain a frozen cue phrase (8A.1) used non-relationally by the
+  generator and still take the v2 grammar. Not retuned in response; reported as the honest
+  residual.
+- **D41: `audit_edges.detect_anchors` gained a label-blind mode** (`expected=None`) so the
+  8A.2 relabel rule could reuse it instead of a second implementation; the Phase 5 ceiling
+  check's call site is unaffected.
+- **D42: the 8A.2 relabel produces 99/130 relabelled rows, not D32's 96/500.** Both are
+  legitimate; they measure different properties (label recall vs. target uniqueness). Neither
+  was adjusted to match the other.
+- **D43: a first version of the 8A.3 latency script used a text-length proxy for token count**
+  and produced a result backwards from both Phase 5's hypothesis and the corrected
+  measurement. Caught before being written into the report; fixed to read the server's own
+  `timings.predicted_per_token_ms` and rerun from a fresh server start.
+- **D44: Phase 5's section 6 grammar-size latency hypothesis is not confirmed and is
+  superseded.** Cold per-token decode cost is statistically indistinguishable between the v1
+  and v2 grammars (137.7 vs 139.7 ms/token). The latency gate miss persists (3737 ms
+  traffic-weighted p90 cold vs the 3000 ms gate) but is attributed to v2 generating more
+  output tokens, not to a more expensive per-token grammar, and Phase 5's 7220 ms figure is
+  attributed roughly half to a real thermal/sustained-load confound and half to this
+  non-thermal baseline.
 
 ## 15. Phase 9: hardware readiness (no robot required)
 

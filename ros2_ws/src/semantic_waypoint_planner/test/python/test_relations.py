@@ -11,7 +11,12 @@ if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
 from semantic_waypoint_planner.graph import AnnotationGraph  # noqa: E402
-from semantic_waypoint_planner.relations import resolve_relation  # noqa: E402
+from semantic_waypoint_planner.relations import (  # noqa: E402
+    DEFAULT_CUES_PATH,
+    has_relational_cue,
+    load_cues,
+    resolve_relation,
+)
 
 MAP_PATH = os.path.join(_PKG_ROOT, "maps", "room_annotations.json")
 
@@ -125,3 +130,35 @@ def test_none_relation_has_no_edges_and_abstains(tie_graph):
     name, n = resolve_relation(tie_graph, "hub", "none", "go to hub")
     assert name is None
     assert n == 0
+
+
+# ---------------------------------------------------------------------------
+# Cue gating (PLAN.md 8A.1, D38)
+# ---------------------------------------------------------------------------
+
+def test_default_cues_file_exists_and_loads():
+    assert os.path.exists(DEFAULT_CUES_PATH)
+    cues = load_cues()
+    assert "next to" in cues
+    assert "beside" in cues
+
+
+def test_has_relational_cue_true_for_cued_command():
+    assert has_relational_cue("go to the room to the left of the kitchen")
+    assert has_relational_cue("find the bench in the lab that's closest to the door")
+    assert has_relational_cue("take me to the room with the coffee machine")
+
+
+def test_has_relational_cue_false_for_direct_command():
+    assert not has_relational_cue("go to the kitchen")
+    assert not has_relational_cue("please take me to the server room")
+    assert not has_relational_cue("Can you take me to the reception?")
+
+
+def test_has_relational_cue_is_case_insensitive():
+    assert has_relational_cue("Go To The Room NEXT TO The Kitchen")
+
+
+def test_has_relational_cue_accepts_explicit_cue_list():
+    assert has_relational_cue("go to the north room", cues=["north"])
+    assert not has_relational_cue("go to the south room", cues=["north"])
