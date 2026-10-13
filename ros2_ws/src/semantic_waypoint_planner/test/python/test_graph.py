@@ -58,6 +58,31 @@ def test_adjacency_text(base_data):
     assert "storage_room" in text or "server_room" in text
 
 
+def test_related_rooms_materializes_inverse_edges(base_data):
+    graph = AnnotationGraph.from_dict(base_data)
+    # Authored forward edge: charging_dock -> storage_room, relation adjacent.
+    assert "storage_room" in graph.related_rooms("charging_dock", "adjacent")
+    # Symmetric relations are their own inverse, materialized without being authored.
+    assert "charging_dock" in graph.related_rooms("storage_room", "adjacent")
+    # Authored forward edge: kitchen -> charging_dock, relation near.
+    assert "charging_dock" in graph.related_rooms("kitchen", "near")
+    assert "kitchen" in graph.related_rooms("charging_dock", "near")
+
+
+def test_related_rooms_inverts_left_right(base_data):
+    graph = AnnotationGraph.from_dict(base_data)
+    # Authored: charging_dock left_of storage_room. The inverse (storage_room right_of
+    # charging_dock) must be queryable even though only one direction is in the file.
+    assert "storage_room" in graph.related_rooms("charging_dock", "left_of")
+    assert "charging_dock" in graph.related_rooms("storage_room", "right_of")
+
+
+def test_related_rooms_unknown_returns_empty(base_data):
+    graph = AnnotationGraph.from_dict(base_data)
+    assert graph.related_rooms("charging_dock", "within") == []
+    assert graph.related_rooms("not_a_room", "adjacent") == []
+
+
 def test_duplicate_name_rejected(base_data):
     data = copy.deepcopy(base_data)
     data["rooms"].append(dict(data["rooms"][0]))

@@ -20,6 +20,13 @@ _NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
 SCHEMA_VERSION = 1
 
+# Phase 5 (D29/section 8.1): relations.py traverses edges in code rather than asking the
+# model to. Symmetric relations are their own inverse; left_of/right_of invert to each other.
+# These are materialized into an index at load time so the authored file can stay directional
+# (one edge per geometric fact) without relations.py needing to special case direction.
+SYMMETRIC_RELATIONS = frozenset({"adjacent", "near"})
+INVERSE_RELATIONS = {"left_of": "right_of", "right_of": "left_of"}
+
 
 class GraphValidationError(ValueError):
     """Raised when a room_annotations.json document fails validation."""
@@ -66,6 +73,26 @@ class AnnotationGraph:
         for r in rooms:
             for alias in r.aliases:
                 self._alias_index[alias] = r.name
+        self._relation_index: Dict[str, Dict[str, set]] = {}
+        self._build_relation_index()
+
+    def _build_relation_index(self) -> None:
+        index: Dict[str, Dict[str, set]] = {}
+
+        def add(frm: str, relation: str, to: str) -> None:
+            index.setdefault(frm, {}).setdefault(relation, set()).add(to)
+
+        for e in self.edges:
+            add(e.from_, e.relation, e.to)
+            if e.relation in SYMMETRIC_RELATIONS:
+                add(e.to, e.relation, e.from_)
+            elif e.relation in INVERSE_RELATIONS:
+                add(e.to, INVERSE_RELATIONS[e.relation], e.from_)
+        self._relation_index = index
+
+    def related_rooms(self, name: str, relation: str) -> List[str]:
+        """Rooms reachable from ``name`` by ``relation``, including materialized inverses."""
+        return sorted(self._relation_index.get(name, {}).get(relation, set()))
 
     # ------------------------------------------------------------------
     # Construction
