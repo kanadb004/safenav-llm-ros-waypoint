@@ -12,9 +12,10 @@ import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
-from .grammar import build_grammar
+from .grammar import RELATION_VALUES, build_grammar
 from .graph import AnnotationGraph
 from .prompt import DEFAULT_FEWSHOT_PATH, DEFAULT_TEMPLATE_PATH, PromptBuilder
+from .relations import resolve_relation
 
 try:
     import llama_cpp
@@ -107,6 +108,12 @@ class ResolveResult:
     calibrated_confidence: float = 0.0
     calibrator_loaded: bool = False
     prompt_eval_tokens: int = 0
+    # Phase 5 (D29): set only when the model named a relation other than "none". ``room`` is
+    # always the final, single answer; ``anchor_room`` is what the model literally named before
+    # relations.py hopped it. Python internal, not part of the frozen ResolveWaypoint.srv (12.2).
+    anchor_room: str = ""
+    relation: str = "none"
+    n_relation_targets: int = 0
 
 
 class Calibrator:
@@ -257,20 +264,32 @@ class ResolverCore:
         raw_text = choice["text"]
         mode = "llm_grammar" if grammar_on else "llm_free"
 
-        room, raw_confidence = self._parse_answer(raw_text)
+        anchor, relation, raw_confidence = self._parse_answer(raw_text)
         out_of_graph = False
         if not grammar_on:
-            # A garbled/unparseable answer (room is None) is just as much an escape from the
+            # A garbled/unparseable answer (anchor is None) is just as much an escape from the
             # closed set as a well-formed but unknown name; grammar_on structurally rules out
-            # both, so both count here.
-            out_of_graph = room is None or (room != "none" and room not in self.graph.canonical_names)
+            # both, so both count here. An out of vocabulary relation free-falls to "none" below
+            # rather than counting as out_of_graph: the room name set is the closed graph, the
+            # relation set is a fixed small vocabulary, not the thing this flag measures.
+            out_of_graph = anchor is None or (anchor != "none" and anchor not in self.graph.canonical_names)
+        if relation not in RELATION_VALUES:
+            relation = "none"
+
+        anchor_room = ""
+        final_room = anchor or "none"
+        n_relation_targets = 0
+        if relation != "none" and final_room != "none" and final_room in self.graph.canonical_names:
+            anchor_room = final_room
+            target, n_relation_targets = resolve_relation(self.graph, final_room, relation, command)
+            final_room = target if target is not None else "none"
 
         token_entropy, room_ranking = self._score_candidates(
-            command, room or "none", raw_confidence, candidates
+            command, anchor or "none", raw_confidence, candidates
         )
 
         result = ResolveResult(
-            room=room or "none",
+            room=final_room,
             raw_confidence=raw_confidence,
             reasoning="" if grammar_on else raw_text,
             token_entropy=token_entropy,
@@ -280,6 +299,9 @@ class ResolverCore:
             out_of_graph=out_of_graph,
             raw_text=raw_text,
             prompt_eval_tokens=completion.get("usage", {}).get("prompt_tokens", 0),
+            anchor_room=anchor_room,
+            relation=relation,
+            n_relation_targets=n_relation_targets,
         )
         self._apply_calibrator(result, command)
         return result
@@ -295,16 +317,20 @@ class ResolverCore:
         result.calibrator_loaded = self.calibrator.loaded
 
     @staticmethod
-    def _parse_answer(raw_text: str) -> Tuple[Optional[str], float]:
+    def _parse_answer(raw_text: str) -> Tuple[Optional[str], str, float]:
+        """Returns ``(room, relation, confidence)``. ``relation`` defaults to "none" when
+        absent, which keeps v1-style grammar-off completions (no relation field) working."""
         try:
             data = json.loads(raw_text.strip())
-            return data.get("room"), float(data.get("confidence", 0.0))
+            return data.get("room"), data.get("relation", "none"), float(data.get("confidence", 0.0))
         except (json.JSONDecodeError, TypeError, ValueError):
             match = re.search(r'"room"\s*:\s*"([^"]*)"', raw_text)
             room = match.group(1) if match else None
+            relation_match = re.search(r'"relation"\s*:\s*"([^"]*)"', raw_text)
+            relation = relation_match.group(1) if relation_match else "none"
             conf_match = re.search(r'"confidence"\s*:\s*([0-9.]+)', raw_text)
             confidence = float(conf_match.group(1)) if conf_match else 0.0
-            return room, confidence
+            return room, relation, confidence
 
     def _score_candidates(
         self, command: str, chosen_room: str, raw_confidence: float, candidates: List[str]
