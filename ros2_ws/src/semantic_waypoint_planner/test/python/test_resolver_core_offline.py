@@ -5,6 +5,7 @@ import pytest
 from semantic_waypoint_planner.graph import AnnotationGraph
 from semantic_waypoint_planner.resolver_core import (
     ResolveResult,
+    ResolverCore,
     fast_path_match,
     features,
     min_edit_distance,
@@ -74,6 +75,38 @@ def test_min_edit_distance_uses_alias():
 def test_min_edit_distance_none_room_is_command_length():
     norm = normalize_command("go to the cafeteria")
     assert min_edit_distance(None, [], norm) == len(norm)
+
+
+def test_parse_answer_well_formed_json_with_relation():
+    room, relation, confidence = ResolverCore._parse_answer(
+        '{"room": "kitchen", "relation": "left_of", "confidence": 0.85}'
+    )
+    assert room == "kitchen"
+    assert relation == "left_of"
+    assert confidence == pytest.approx(0.85)
+
+
+def test_parse_answer_missing_relation_defaults_to_none():
+    room, relation, confidence = ResolverCore._parse_answer('{"room": "kitchen", "confidence": 0.9}')
+    assert room == "kitchen"
+    assert relation == "none"
+    assert confidence == pytest.approx(0.9)
+
+
+def test_parse_answer_garbled_text_falls_back_to_regex():
+    room, relation, confidence = ResolverCore._parse_answer(
+        'blah "room": "kitchen", "relation": "near", "confidence": 0.7 blah'
+    )
+    assert room == "kitchen"
+    assert relation == "near"
+    assert confidence == pytest.approx(0.7)
+
+
+def test_parse_answer_fully_garbled_defaults():
+    room, relation, confidence = ResolverCore._parse_answer("not json at all")
+    assert room is None
+    assert relation == "none"
+    assert confidence == 0.0
 
 
 def test_features_vector_order():

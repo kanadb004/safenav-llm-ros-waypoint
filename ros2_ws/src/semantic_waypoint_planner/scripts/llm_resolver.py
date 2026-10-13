@@ -10,6 +10,7 @@ without a restart.
 """
 
 import concurrent.futures
+import json
 import os
 import threading
 import time
@@ -48,6 +49,10 @@ class LlmResolverNode(Node):
         # The container image has no CUDA/Metal build of llama.cpp (CPU only per CLAUDE.md); the
         # ResolverCore default of -1 (offload all layers) is for host tooling with Metal.
         self.declare_parameter("n_gpu_layers", 0)
+        # D27/D28: inprocess is llama-cpp-python in this process; http is llama-server reached
+        # over HTTP, the shape used for batch runs against the host Metal server and on Jetson.
+        self.declare_parameter("backend", "inprocess")
+        self.declare_parameter("backend_url", "http://host.docker.internal:8080")
 
         annotations_path = self.get_parameter("annotations_path").value
         model_path = self._resolve_model_path(self.get_parameter("model_path").value)
@@ -75,6 +80,8 @@ class LlmResolverNode(Node):
             allow_none=self.get_parameter("allow_none").value,
             calibrator_path=calibrator_path,
             n_gpu_layers=self.get_parameter("n_gpu_layers").value,
+            backend=self.get_parameter("backend").value,
+            backend_url=self.get_parameter("backend_url").value,
         )
         self.get_logger().info("model loaded")
 
@@ -141,11 +148,22 @@ class LlmResolverNode(Node):
             response.reasoning = "timeout"
             response.resolver_mode = "llm_grammar" if grammar_on else "llm_free"
             return response
+        except Exception as exc:
+            # A backend (e.g. llama-server) error must not take the whole node down; this was
+            # observed directly in phase 5 testing (concurrent slot contention returning a 500).
+            self.get_logger().error(f"resolve failed: {exc}")
+            response.success = False
+            response.reasoning = f"backend_error: {exc}"
+            response.resolver_mode = "llm_grammar" if grammar_on else "llm_free"
+            return response
 
         response.matched_room_name = result.room
         response.raw_confidence = result.raw_confidence
         response.calibrated_confidence = result.calibrated_confidence
-        response.reasoning = result.reasoning
+        # ResolveWaypoint.srv (12.2) is frozen, so the phase 5 hop fields ride in the existing
+        # free-text "reasoning" field rather than as new response fields (deviation, see the
+        # phase 5 report). Empty when relation is "none", so v1 callers see no change.
+        response.reasoning = self._encode_reasoning(result)
         response.token_entropy = result.token_entropy
         response.inference_ms = result.latency_ms
         response.resolver_mode = result.mode
@@ -166,6 +184,17 @@ class LlmResolverNode(Node):
             response.success = False
 
         return response
+
+    @staticmethod
+    def _encode_reasoning(result) -> str:
+        payload = {}
+        if result.reasoning:
+            payload["raw"] = result.reasoning
+        if result.relation != "none":
+            payload["anchor_room"] = result.anchor_room
+            payload["relation"] = result.relation
+            payload["n_relation_targets"] = result.n_relation_targets
+        return json.dumps(payload) if payload else ""
 
     def _get_room_pose(self, name: str):
         # Polled rather than rclpy.spin_until_future_complete(self, ...): this runs inside a

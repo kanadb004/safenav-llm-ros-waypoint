@@ -12,14 +12,11 @@ import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
-from .grammar import build_grammar
+from .backends import Backend, build_backend
+from .grammar import RELATION_VALUES, build_grammar
 from .graph import AnnotationGraph
 from .prompt import DEFAULT_FEWSHOT_PATH, DEFAULT_TEMPLATE_PATH, PromptBuilder
-
-try:
-    import llama_cpp
-except ImportError:  # pragma: no cover - exercised only when llama_cpp is absent
-    llama_cpp = None
+from .relations import resolve_relation
 
 VERB_PHRASES = ["go to", "navigate to", "head to", "take me to", "move to"]
 _WS_RE = re.compile(r"\s+")
@@ -107,6 +104,12 @@ class ResolveResult:
     calibrated_confidence: float = 0.0
     calibrator_loaded: bool = False
     prompt_eval_tokens: int = 0
+    # Phase 5 (D29): set only when the model named a relation other than "none". ``room`` is
+    # always the final, single answer; ``anchor_room`` is what the model literally named before
+    # relations.py hopped it. Python internal, not part of the frozen ResolveWaypoint.srv (12.2).
+    anchor_room: str = ""
+    relation: str = "none"
+    n_relation_targets: int = 0
 
 
 class Calibrator:
@@ -163,9 +166,9 @@ class ResolverCore:
         allow_none: bool = True,
         calibrator_path: Optional[str] = None,
         n_gpu_layers: int = -1,
+        backend: str = "inprocess",
+        backend_url: str = "http://host.docker.internal:8080",
     ):
-        if llama_cpp is None:
-            raise ImportError("llama_cpp is required to construct a ResolverCore")
         self.n_ctx = n_ctx
         self.n_threads = n_threads
         self.temperature = temperature
@@ -176,13 +179,15 @@ class ResolverCore:
         self.allow_none = allow_none
         self.calibrator = Calibrator(calibrator_path)
         self.last_prefix_tokens = 0
+        self.backend_name = backend
 
-        self._llm = llama_cpp.Llama(
-            model_path=model_path,
+        self._backend: Backend = build_backend(
+            backend,
+            model_path,
             n_ctx=n_ctx,
             n_threads=n_threads,
             n_gpu_layers=n_gpu_layers,
-            verbose=False,
+            backend_url=backend_url,
         )
         self.set_graph(graph)
 
@@ -194,8 +199,7 @@ class ResolverCore:
             graph, self.prompt_template, self.fewshot_path, self.fewshot_count
         )
         self._grammar_str = build_grammar(graph.canonical_names, allow_none=self.allow_none)
-        self._grammar = llama_cpp.LlamaGrammar.from_string(self._grammar_str)
-        self._llm.reset()
+        self._backend.reset()
 
     @property
     def grammar_str(self) -> str:
@@ -240,37 +244,44 @@ class ResolverCore:
         max_tokens: Optional[int] = None,
     ) -> ResolveResult:
         prompt = self.prompt_builder.build_prompt(command)
-        kwargs = dict(
-            prompt=prompt,
+        raw_text, _backend_ms, prompt_eval_tokens = self._backend.complete(
+            prompt,
+            self._grammar_str if grammar_on else None,
             max_tokens=max_tokens if max_tokens is not None else self.max_tokens,
             temperature=self.temperature,
             stop=["<|end|>"],
         )
-        if grammar_on:
-            kwargs["grammar"] = self._grammar
-
-        completion = self._llm.create_completion(**kwargs)
         latency_ms = (time.monotonic() - start) * 1000.0
-        self.last_prefix_tokens = getattr(self._llm, "n_tokens", 0)
+        self.last_prefix_tokens = prompt_eval_tokens
 
-        choice = completion["choices"][0]
-        raw_text = choice["text"]
         mode = "llm_grammar" if grammar_on else "llm_free"
 
-        room, raw_confidence = self._parse_answer(raw_text)
+        anchor, relation, raw_confidence = self._parse_answer(raw_text)
         out_of_graph = False
         if not grammar_on:
-            # A garbled/unparseable answer (room is None) is just as much an escape from the
+            # A garbled/unparseable answer (anchor is None) is just as much an escape from the
             # closed set as a well-formed but unknown name; grammar_on structurally rules out
-            # both, so both count here.
-            out_of_graph = room is None or (room != "none" and room not in self.graph.canonical_names)
+            # both, so both count here. An out of vocabulary relation free-falls to "none" below
+            # rather than counting as out_of_graph: the room name set is the closed graph, the
+            # relation set is a fixed small vocabulary, not the thing this flag measures.
+            out_of_graph = anchor is None or (anchor != "none" and anchor not in self.graph.canonical_names)
+        if relation not in RELATION_VALUES:
+            relation = "none"
+
+        anchor_room = ""
+        final_room = anchor or "none"
+        n_relation_targets = 0
+        if relation != "none" and final_room != "none" and final_room in self.graph.canonical_names:
+            anchor_room = final_room
+            target, n_relation_targets = resolve_relation(self.graph, final_room, relation, command)
+            final_room = target if target is not None else "none"
 
         token_entropy, room_ranking = self._score_candidates(
-            command, room or "none", raw_confidence, candidates
+            command, anchor or "none", raw_confidence, candidates
         )
 
         result = ResolveResult(
-            room=room or "none",
+            room=final_room,
             raw_confidence=raw_confidence,
             reasoning="" if grammar_on else raw_text,
             token_entropy=token_entropy,
@@ -279,7 +290,10 @@ class ResolverCore:
             mode=mode,
             out_of_graph=out_of_graph,
             raw_text=raw_text,
-            prompt_eval_tokens=completion.get("usage", {}).get("prompt_tokens", 0),
+            prompt_eval_tokens=prompt_eval_tokens,
+            anchor_room=anchor_room,
+            relation=relation,
+            n_relation_targets=n_relation_targets,
         )
         self._apply_calibrator(result, command)
         return result
@@ -295,16 +309,20 @@ class ResolverCore:
         result.calibrator_loaded = self.calibrator.loaded
 
     @staticmethod
-    def _parse_answer(raw_text: str) -> Tuple[Optional[str], float]:
+    def _parse_answer(raw_text: str) -> Tuple[Optional[str], str, float]:
+        """Returns ``(room, relation, confidence)``. ``relation`` defaults to "none" when
+        absent, which keeps v1-style grammar-off completions (no relation field) working."""
         try:
             data = json.loads(raw_text.strip())
-            return data.get("room"), float(data.get("confidence", 0.0))
+            return data.get("room"), data.get("relation", "none"), float(data.get("confidence", 0.0))
         except (json.JSONDecodeError, TypeError, ValueError):
             match = re.search(r'"room"\s*:\s*"([^"]*)"', raw_text)
             room = match.group(1) if match else None
+            relation_match = re.search(r'"relation"\s*:\s*"([^"]*)"', raw_text)
+            relation = relation_match.group(1) if relation_match else "none"
             conf_match = re.search(r'"confidence"\s*:\s*([0-9.]+)', raw_text)
             confidence = float(conf_match.group(1)) if conf_match else 0.0
-            return room, confidence
+            return room, relation, confidence
 
     def _score_candidates(
         self, command: str, chosen_room: str, raw_confidence: float, candidates: List[str]
