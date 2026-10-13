@@ -646,6 +646,36 @@
       "from": "kitchen",
       "to": "reception",
       "relation": "right_of"
+    },
+    {
+      "from": "kitchen",
+      "to": "meeting_room_a",
+      "relation": "left_of"
+    },
+    {
+      "from": "meeting_room_a",
+      "to": "meeting_room_b",
+      "relation": "left_of"
+    },
+    {
+      "from": "meeting_room_b",
+      "to": "office",
+      "relation": "left_of"
+    },
+    {
+      "from": "server_room",
+      "to": "charging_dock",
+      "relation": "left_of"
+    },
+    {
+      "from": "storage_room",
+      "to": "lab",
+      "relation": "left_of"
+    },
+    {
+      "from": "lab",
+      "to": "workshop",
+      "relation": "left_of"
     }
   ]
 }
