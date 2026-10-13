@@ -86,6 +86,8 @@ install(FILES
   ${PROJECT_NAME}/grammar.py
   ${PROJECT_NAME}/prompt.py
   ${PROJECT_NAME}/resolver_core.py
+  ${PROJECT_NAME}/relations.py
+  ${PROJECT_NAME}/backends.py
   DESTINATION ${PYTHON_INSTALL_DIR}/${PROJECT_NAME}
 )
 
