@@ -128,6 +128,78 @@ def per_category_top1(rows: Sequence[Row]) -> Dict[str, Optional[float]]:
     return {cat: top1([r for r in rows if r.get("category") == cat]) for cat in categories}
 
 
+def ece(probs: Sequence[float], labels: Sequence[int], n_bins: int = 10) -> float:
+    """Expected calibration error, equal-width bins over [0, 1] (PLAN.md section 10/12.8).
+
+    ``labels`` are 1 for a correct resolution, 0 otherwise, matching the ``resolved ==
+    intended`` definition the calibration trials use (docs/archive/PLAN-v1.md section 10).
+    """
+    if not probs:
+        return 0.0
+    bins = [[] for _ in range(n_bins)]
+    for p, y in zip(probs, labels):
+        idx = min(int(p * n_bins), n_bins - 1)
+        bins[idx].append((p, y))
+    n = len(probs)
+    total = 0.0
+    for bucket in bins:
+        if not bucket:
+            continue
+        bucket_probs = [p for p, _ in bucket]
+        bucket_labels = [y for _, y in bucket]
+        avg_conf = sum(bucket_probs) / len(bucket_probs)
+        avg_acc = sum(bucket_labels) / len(bucket_labels)
+        total += (len(bucket) / n) * abs(avg_conf - avg_acc)
+    return total
+
+
+def brier_score(probs: Sequence[float], labels: Sequence[int]) -> float:
+    if not probs:
+        return 0.0
+    return sum((p - y) ** 2 for p, y in zip(probs, labels)) / len(probs)
+
+
+def reliability_bins(probs: Sequence[float], labels: Sequence[int], n_bins: int = 10) -> List[Dict[str, object]]:
+    """Per-bin (mean predicted confidence, empirical accuracy, count), for a reliability plot."""
+    bins = [[] for _ in range(n_bins)]
+    for p, y in zip(probs, labels):
+        idx = min(int(p * n_bins), n_bins - 1)
+        bins[idx].append((p, y))
+    out = []
+    for i, bucket in enumerate(bins):
+        lo, hi = i / n_bins, (i + 1) / n_bins
+        if not bucket:
+            out.append({"bin_lo": lo, "bin_hi": hi, "n": 0, "mean_confidence": None, "accuracy": None})
+            continue
+        bucket_probs = [p for p, _ in bucket]
+        bucket_labels = [y for _, y in bucket]
+        out.append({
+            "bin_lo": lo,
+            "bin_hi": hi,
+            "n": len(bucket),
+            "mean_confidence": sum(bucket_probs) / len(bucket_probs),
+            "accuracy": sum(bucket_labels) / len(bucket_labels),
+        })
+    return out
+
+
+def false_pass_rate(probs: Sequence[float], labels: Sequence[int], threshold: float) -> float:
+    """Fraction of predictions at or above ``threshold`` whose label is wrong (gate accepts but
+    the resolution is incorrect)."""
+    passed = [(p, y) for p, y in zip(probs, labels) if p >= threshold]
+    if not passed:
+        return 0.0
+    return sum(1 for _, y in passed if y == 0) / len(passed)
+
+
+def false_rejection_rate(probs: Sequence[float], labels: Sequence[int], threshold: float) -> float:
+    """Fraction of correct resolutions (label 1) the gate rejects (confidence below threshold)."""
+    correct = [(p, y) for p, y in zip(probs, labels) if y == 1]
+    if not correct:
+        return 0.0
+    return sum(1 for p, _ in correct if p < threshold) / len(correct)
+
+
 def summarize(rows: Sequence[Row]) -> Dict[str, object]:
     """All section-5 metrics for one condition/baseline in one dict, ready to become a
     ``summary.csv`` row."""
