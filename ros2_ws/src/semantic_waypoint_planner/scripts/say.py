@@ -21,7 +21,7 @@ from semantic_waypoint_planner.msg import SemanticGoal
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("command")
-    parser.add_argument("--confidence-threshold", type=float, default=0.72)
+    parser.add_argument("--confidence-threshold", type=float, default=0.85)
     parser.add_argument("--timeout", type=float, default=310.0)
     args = parser.parse_args()
 

@@ -10,6 +10,10 @@ llm_resolver_node_py:
     fewshot_count: 0
     prompt_template: "system_template.txt"
     allow_none: true
+    # calibrator_path defaults to <share>/config/calibrator.json (Phase 7), loaded automatically
+    # once present. Not overridden here; see that file's own "threshold" field (0.85, trained by
+    # ml/safenav_ml/train_calibrator.py) for the gate value every caller's default now matches
+    # (say.py, SemanticNavigateToPose's port default, plugin_description.xml).
 
 semantic_goal_node:
   ros__parameters:

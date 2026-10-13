@@ -24,7 +24,7 @@ Status legend: `[ ]` not started, `[~]` in progress, `[x]` merged to main.
 | 5 | Relational decomposition and resolver backend | [x] | #16 | #17 |
 | 5A | Corrective: cue gating, benchmark re-audit, latency re-measure | [x] | #18 | #19 |
 | 6 | BT plugin, semantic goal node, end to end in sim | [x] | #20 | #21 |
-| 7 | Confidence calibration pipeline | [ ] | | |
+| 7 | Confidence calibration pipeline | [x] | #22 | #23 |
 | 8 | E2E validation, ablations, final results | [ ] | | |
 | 9 | Hardware readiness (no robot required) | [ ] | | |
 | 10 | Hardware bring-up (deferred until hardware is present) | [ ] | | |
@@ -674,6 +674,18 @@ section 10.
 
 Gate: calibrator deployed in the resolver; threshold fixed in `planner_params.yaml`.
 
+**Outcome: merged (#23), calibrator deployed and most DoD items met; the gated accuracy gate
+was not reached.** Session 1 (200) and session 2 (100) are disjoint from each other and the
+500 benchmark. CV ECE 0.0698 (<= 0.10, met) and session 2 calibrated ECE 0.0730 (<= 0.08, met),
+false pass 0.0426 (<= 5%, met). Session 2 false rejection 0.3662 misses the <= 15% target, and
+gated end-to-end accuracy on the 500 benchmark is 0.72 against the >= 0.85 target. Both misses
+trace to the same cause: the model's raw confidence is only weakly discriminative between
+correct and incorrect resolutions (session 1: 0.925 mean for correct versus 0.896 for incorrect,
+both inside a narrow 0.75-0.99 band), so the <= 5% false-pass safety bound forces a threshold
+(0.85) that also rejects a third of correct resolutions. Not retuned on session 2 per this
+section's own instruction. `semantic_cli` and the Python-versus-sklearn parity test both pass.
+Report: `docs/reports/phase-7-calibration.md`. Deviations D49 to D52.
+
 ## 11. Phase 8: end to end validation, ablations, final results
 
 Goal: the 150 run validation, the grammar ablation, the model ablation, and the consolidated
@@ -1092,6 +1104,30 @@ D40 to D44 were recorded during Phase 5A; see `docs/reports/phase-5a-corrective.
   `bt_navigator` do; the first launch attempt failed lifecycle bring-up after a 4 s bond
   timeout before this was set. Disables the bond watchdog for the whole manager rather than
   mixing bonded and unbonded nodes under one `bond_timeout`.
+
+D49 to D52 were recorded during Phase 7; see `docs/reports/phase-7-calibration.md` section 4.
+
+- **D49: `run_trials.py` calls `ResolverCore` directly rather than driving the full
+  `/semantic_goal` to Nav2 ROS graph**, following the Phase 5 `backend=http` host-script
+  precedent (D28). The plan's text itself notes loopback navigation outcome is deterministic
+  given the resolved room, so the full stack adds runtime without changing the calibration
+  label. The `/semantic_goal`-driven suite is left to Phase 8's `e2e150`, which extends this
+  script rather than replacing it.
+- **D50: trial outputs live under `data/runs/calibration/` (gitignored), not
+  `data/calibration/`.** `data/calibration/` is reserved for the committed source files
+  (`session1_sim.jsonl`, `session2_sim.jsonl`); the trial JSONL is reproducible from those plus
+  `run_trials.py`, matching the repository's existing `data/runs/` convention for run output.
+- **D51: the default `confidence_threshold` is raised from 0.72 to 0.85** (the trained value) at
+  every call site except `msg/SemanticGoal.msg`'s own comment, which documents a convention, not
+  an enforced default, and was left untouched to avoid any edit inside a frozen interface file.
+- **D52: gated end-to-end accuracy (0.72) and session 2 false rejection (0.3662) both miss their
+  targets (>= 0.85, <= 15%), and this was not corrected by tuning on session 2.** Root cause:
+  the model's raw confidence barely separates correct from incorrect resolutions (session 1:
+  0.925 mean correct versus 0.896 mean incorrect, both inside 0.75-0.99), so the <= 5%
+  false-pass safety bound forces a threshold high enough to also reject about a third of correct
+  resolutions. The two misses share one cause rather than being independent; see the phase
+  report for the per-category breakdown and the Phase 8 implication (the model ablation, not a
+  calibration retune, is the plausible next lever).
 
 ## 15. Phase 9: hardware readiness (no robot required)
 

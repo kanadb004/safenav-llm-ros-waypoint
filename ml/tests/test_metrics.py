@@ -138,3 +138,47 @@ def test_summarize_has_all_keys():
     ):
         assert key in out
     assert out["n"] == 12
+
+
+# Phase 7 calibration metrics (PLAN.md section 10).
+
+def test_ece_perfect_calibration_is_zero():
+    probs = [0.0, 0.0, 1.0, 1.0]
+    labels = [0, 0, 1, 1]
+    assert metrics.ece(probs, labels, n_bins=10) == 0.0
+
+
+def test_ece_penalizes_overconfidence():
+    # All predicted at 0.95 but only half correct: one bin, |0.95 - 0.5| = 0.45.
+    probs = [0.95, 0.95, 0.95, 0.95]
+    labels = [1, 0, 1, 0]
+    assert abs(metrics.ece(probs, labels, n_bins=10) - 0.45) < 1e-9
+
+
+def test_brier_score_known_value():
+    probs = [1.0, 0.0]
+    labels = [1, 1]
+    # (1-1)^2 + (0-1)^2 = 1, divided by 2
+    assert metrics.brier_score(probs, labels) == 0.5
+
+
+def test_false_pass_rate_only_counts_passed_predictions():
+    probs = [0.9, 0.9, 0.4]
+    labels = [1, 0, 1]  # third row is below threshold, excluded
+    assert metrics.false_pass_rate(probs, labels, threshold=0.5) == 0.5
+
+
+def test_false_rejection_rate_only_counts_correct_predictions():
+    probs = [0.9, 0.4, 0.4]
+    labels = [1, 1, 0]  # third row is incorrect, excluded
+    assert metrics.false_rejection_rate(probs, labels, threshold=0.5) == 0.5
+
+
+def test_reliability_bins_counts_and_empty_bins():
+    probs = [0.05, 0.95]
+    labels = [0, 1]
+    bins = metrics.reliability_bins(probs, labels, n_bins=10)
+    assert len(bins) == 10
+    assert bins[0]["n"] == 1 and bins[0]["accuracy"] == 0.0
+    assert bins[9]["n"] == 1 and bins[9]["accuracy"] == 1.0
+    assert bins[5]["n"] == 0 and bins[5]["accuracy"] is None

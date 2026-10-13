@@ -45,7 +45,9 @@ class LlmResolverNode(Node):
         self.declare_parameter("fewshot_count", 5)
         self.declare_parameter("prompt_template", "system_template.txt")
         self.declare_parameter("allow_none", True)
-        self.declare_parameter("calibrator_path", "")
+        self.declare_parameter(
+            "calibrator_path", os.path.join(share_dir, "config", "calibrator.json")
+        )
         # The container image has no CUDA/Metal build of llama.cpp (CPU only per CLAUDE.md); the
         # ResolverCore default of -1 (offload all layers) is for host tooling with Metal.
         self.declare_parameter("n_gpu_layers", 0)

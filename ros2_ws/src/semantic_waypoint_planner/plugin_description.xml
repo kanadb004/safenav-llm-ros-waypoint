@@ -9,7 +9,7 @@
   <TreeNodesModel>
     <Action ID="SemanticNavigateToPose">
       <input_port name="command" type="std::string"/>
-      <input_port name="confidence_threshold" type="double" default="0.72"/>
+      <input_port name="confidence_threshold" type="double" default="0.85"/>
       <input_port name="timeout_ms" type="int" default="3000"/>
       <output_port name="resolved_pose" type="geometry_msgs::msg::PoseStamped"/>
       <output_port name="resolved_room" type="std::string"/>

@@ -164,7 +164,7 @@ class TestSemanticNav(unittest.TestCase):
     def _on_tts(cls, msg):
         cls.tts_messages.append(msg.data)
 
-    def _send_goal(self, command, confidence_threshold=0.72):
+    def _send_goal(self, command, confidence_threshold=0.85):
         goal = SemanticGoal()
         goal.command = command
         goal.confidence_threshold = confidence_threshold
@@ -183,7 +183,7 @@ class TestSemanticNav(unittest.TestCase):
         result = self._wait_for_result(0)
         self.assertEqual(result["nav_result"], "succeeded")
         self.assertEqual(result["resolved_room"], "kitchen")
-        self.assertGreaterEqual(result["calibrated_confidence"], 0.72)
+        self.assertGreaterEqual(result["calibrated_confidence"], 0.85)
 
     def test_2_low_confidence_path(self):
         self._send_goal("go to the cafeteria")
