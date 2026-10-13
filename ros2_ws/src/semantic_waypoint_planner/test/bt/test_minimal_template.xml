@@ -1,0 +1,23 @@
+<!--
+  Test fixture only: the same per-goal rendering semantic_goal_node does in production
+  (behavior_trees/semantic_navigate_to_pose.xml), but with the stock Nav2 navigate subtree
+  replaced by AlwaysSuccess (a BT.CPP built-in) so the launch test can exercise
+  SemanticNavigateToPose and semantic_goal_node without a map server, costmaps, a planner or a
+  controller. SpeakText and the ClarificationRequest path are unchanged from production.
+-->
+<root main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <Fallback name="SemanticNavigateOrClarify">
+      <Sequence name="ResolveThenSucceed">
+        <SemanticNavigateToPose command="__COMMAND__"
+                                 confidence_threshold="__CONFIDENCE_THRESHOLD__"
+                                 timeout_ms="__TIMEOUT_MS__"
+                                 resolved_pose="{resolved_pose}"
+                                 resolved_room="{resolved_room}"
+                                 calibrated_confidence="{calibrated_confidence}"/>
+        <AlwaysSuccess/>
+      </Sequence>
+      <SpeakText text="test clarification"/>
+    </Fallback>
+  </BehaviorTree>
+</root>
