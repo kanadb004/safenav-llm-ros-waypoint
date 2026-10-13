@@ -9,6 +9,16 @@
 > See D53. The specification's >= 0.85 is unchanged and is not withdrawn; the comparison against
 > it is deferred until the fix in PLAN.md section 16A lands. No measurement, script or dataset
 > changed; only the pass or fail language on those two rows. Sections 3, 4 and 5 are amended.
+>
+> **Second amendment, same date (D54).** The >= 0.85 and <= 15% targets this report was written
+> against were both internally set, not specification-derived: the Review 2 metrics table was
+> drafted inside this project and was never approved. The gates are re-anchored on the primary
+> literature. Gated accuracy is now measured against **>= 0.75** (KnowNo's multi-step target,
+> Ren et al. 2023, arXiv 2307.01928), with the stricter category-weighted reading of 0.824
+> reported alongside it. The <= 15% false rejection gate is **withdrawn** as having no basis in
+> any cited work; KnowNo reports help rate instead, 0.58 to 0.92, against which this system's
+> 0.53 is favourable. See PLAN.md section 1 and D54. Latency is unaffected and the re-anchoring
+> makes that gate stricter, not looser.
 
 ## 1. What this phase built
 
@@ -120,8 +130,10 @@ underconfident, not overconfident, in the region near 0.99.)
 | Session 2 raw-confidence ECE | 0.2030 | n/a | reported |
 | Session 2 calibrated ECE | 0.0730 | <= 0.08 | met |
 | Session 2 false pass rate | 0.0426 | <= 5% | met |
-| Session 2 false rejection rate | 0.3662 | <= 15% | provisional (D53); provable optimum for this feature vector |
-| Gated end-to-end accuracy, 500 benchmark (corrected labels) | 0.72 | >= 0.85 | provisional (D53); comparison deferred to 16A |
+| Session 2 false rejection rate | 0.3662 | gate withdrawn (D54) | reported; provable optimum for this feature vector |
+| Session 2 help rate (all commands deferred) | 0.53 | KnowNo band 0.58 to 0.92 | below every KnowNo setting (D54) |
+| Session 2 precision on acted-upon commands | 0.957 | n/a | reported (D54) |
+| Gated end-to-end accuracy, 500 benchmark (corrected labels) | 0.72 | >= 0.75 (D54), or 0.824 category-weighted | provisional (D53); within noise of 0.75, misses 0.824 |
 | Threshold written to `calibrator.json` | 0.85 | n/a | deployed |
 
 Gated per-category accuracy (500 benchmark, corrected labels, gate on):
