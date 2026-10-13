@@ -1,10 +1,16 @@
-# SafeNav-LLM master build plan
+# SafeNav-LLM master build plan (v2)
 
 Source of truth for building SafeNav-LLM from an empty repository to the simulation-complete
 system described in `docs/reference/Review_2_Phase_2.docx` (specification) and
 `docs/reference/SafeNav_Complete_Architectural_Analysis.pdf` (rationale). One phase per Claude
 Code session. Each phase has a scope, the concrete deliverables, a definition of done (DoD)
 that is verified by running commands, and a gate that must hold before the next phase starts.
+
+**Plan version 2, 2026-10-13.** Phases 0 to 4 were built against plan v1, archived verbatim at
+`docs/archive/PLAN-v1.md`. The back half was redrafted after Phase 4 closed below its accuracy
+gate. Read `docs/archive/superseded-decisions.md` before Phase 5 if anything here contradicts
+a phase 0 to 4 report. Section numbers 12 (interfaces), 13 (latency) and 14 (deviations) are
+unchanged from v1 so that existing reports' cross-references still resolve.
 
 Status legend: `[ ]` not started, `[~]` in progress, `[x]` merged to main.
 
@@ -15,17 +21,34 @@ Status legend: `[ ]` not started, `[~]` in progress, `[x]` merged to main.
 | 2 | Simulation world, map, Nav2 bringup | [x] | #5 | #6 |
 | 3 | LLM resolver prototype (Python, GBNF) | [x] | #9 | #10 |
 | 4 | Synthetic benchmark and prompt sensitivity study | [x] | #14 | #15 |
-| 5 | LLM resolver node in C++ (llama.cpp C API) | [ ] | | |
+| 5 | Relational decomposition and resolver backend | [ ] | | |
 | 6 | BT plugin, semantic goal node, end to end in sim | [ ] | | |
 | 7 | Confidence calibration pipeline | [ ] | | |
-| 8 | End to end validation and grammar ablation | [ ] | | |
-| 9 | Model size ablation, final evaluation report | [ ] | | |
-| 10 | Hardware deployment (deferred, out of scope now) | [ ] | | |
+| 8 | E2E validation, ablations, final results | [ ] | | |
+| 9 | Hardware readiness (no robot required) | [ ] | | |
+| 10 | Hardware bring-up (deferred until hardware is present) | [ ] | | |
+
+## Budget
+
+Five phases remain, scoped to about **4.75 working days** of human time. Roughly four hours of
+that is unattended background compute that overlaps with other work.
+
+| Phase | Human time | Background compute |
+|-------|-----------|--------------------|
+| 5 Relational decomposition and backend | 1.5 d | ~1 h (benchmark reruns) |
+| 6 BT plugin and E2E | 1.25 d | none |
+| 7 Calibration | 0.75 d | ~20 min |
+| 8 E2E validation and results | 0.75 d | ~3.5 h (300 loopback runs) |
+| 9 Hardware readiness | 0.5 d | none |
+
+Phase 9 is documentation and configuration only. If the week runs tight it can slip to a later
+session without blocking anything, which puts the critical path at 4.25 days.
 
 ## 0. Ground rules that apply to every phase
 
-- Target: software simulation only. No hardware code. Anything hardware specific
-  (Jetson CUDA build, Create3 topics, OAK-D, RPLiDAR, human participant sessions) is Phase 10.
+- Target: software simulation, plus a hardware path that is proven feasible rather than
+  assumed. Anything requiring the physical robot (Create3 topics, OAK-D, RPLiDAR, human
+  participant sessions) is Phase 10.
 - Everything ROS runs inside the Docker image `safenav-llm:humble` (see `docker/`). Host side
   Python tooling in `ml/` runs in the conda env `tf_env` on macOS with Metal acceleration.
 - Follow `CLAUDE.md` for git workflow and commit conventions. One issue, one branch, one PR per phase.
@@ -33,34 +56,44 @@ Status legend: `[ ]` not started, `[~]` in progress, `[x]` merged to main.
   verified (commands and outputs), measured numbers, deviations, open risks for the next phase.
 - Never modify Nav2 source. The package must install with `colcon build` on a stock Humble system.
 - Interfaces (section 12) are frozen after Phase 1. Extending with new fields is allowed only by
-  appending and recording the change in section 14.
+  appending and recording the change in section 14. The GBNF grammar (12.6) is generated, not an
+  interface, and may change with a recorded deviation; `ResolveWaypoint.srv` (12.2) may not.
+- Do not tick a DoD item you did not run.
 
 ## 1. System summary (what the finished simulation delivers)
 
 Operator command (text) -> `/semantic_goal_node` (lifecycle node, validates, renders the BT XML
 with the command and sends a Nav2 `NavigateToPose` goal) -> Nav2 `bt_navigator` ticks
-`SemanticNavigateToPose` (BT plugin) -> plugin calls `/list_rooms` then `/resolve_waypoint`
--> `/llm_resolver_node` (Phi-3 mini Q4_K_M via llama.cpp, GBNF grammar built from the annotation
-graph, fast path for exact alias matches, calibrator producing `calibrated_confidence`)
--> `/annotation_map_node` gives the `PoseStamped` for the chosen canonical name
--> plugin writes `resolved_pose` to the blackboard and returns SUCCESS (or FAILURE on timeout or
-below threshold, triggering the clarification fallback subtree with TTS and LED ring)
--> `ComputePathToPose` and `FollowPath` drive the simulated TurtleBot4 to the room
+`SemanticNavigateToPose` (C++ BT plugin) -> plugin calls `/list_rooms` then `/resolve_waypoint`
+-> `/llm_resolver_node_py` (Phi-3 mini Q4_K_M, GBNF grammar built from the annotation graph,
+fast path for exact alias matches, **relational decomposition against the graph**, calibrator
+producing `calibrated_confidence`) -> `/annotation_map_node` gives the `PoseStamped` for the
+chosen canonical name -> plugin writes `resolved_pose` to the blackboard and returns SUCCESS
+(or FAILURE on timeout or below threshold, triggering the clarification fallback subtree with
+TTS) -> `ComputePathToPose` and `FollowPath` drive the simulated TurtleBot4 to the room
 -> every run is logged to a ros2 bag and a JSONL run record.
 
-Targets (simulation):
+Inference reaches the model through a `backend` parameter: `inprocess` (llama-cpp-python) for
+host development and unit tests, `http` (llama.cpp `llama-server`, same GGUF, same GBNF) for
+batch runs and for hardware. See section 13.
 
-| Metric | Target |
-|--------|--------|
-| Top-1 accuracy, 500 pair benchmark | >= 85% (Phase 4 baseline gate >= 80%) |
-| Top-3 accuracy, 500 pair benchmark | >= 97% |
-| Out of graph output rate, grammar on | 0% (structural) |
-| Out of graph output rate, grammar off | report, expected >= 5% |
-| ECE, calibrated confidence (sim eval set) | <= 0.08 (CV gate <= 0.10) |
-| False pass rate (sim eval set) | <= 5% |
-| False rejection rate (sim eval set) | <= 15% |
-| Resolver latency p90 | < 3000 ms (see section 13 on CPU vs Metal) |
-| 150 run E2E sim validation, grammar on | 0 out of graph outputs |
+### Targets
+
+Accuracy is stated at two levels, because abstention on adversarial commands is the
+calibrator's job and not the resolver's (see `docs/archive/superseded-decisions.md` S6).
+
+| Metric | Target | Phase |
+|--------|--------|-------|
+| Resolver raw top-1, 500 pair benchmark, gate disabled | >= 0.80 | 5 |
+| Resolver top-3, 500 pair benchmark | >= 0.88 | 5 |
+| Gated end-to-end accuracy, 500 pair benchmark (correct abstention counts as correct) | >= 0.85 | 7 |
+| Out of graph output rate, grammar on | 0% (structural) | 5, 8 |
+| Out of graph output rate, grammar off | report as measured (D24: 1.0% at Phase 4) | 8 |
+| ECE, calibrated confidence (sim eval set) | <= 0.08 (CV gate <= 0.10) | 7 |
+| False pass rate (sim eval set) | <= 5% | 7 |
+| False rejection rate (sim eval set) | <= 15% | 7 |
+| Resolver latency p90 | < 3000 ms on the Metal backend (section 13) | 5, 8 |
+| 150 run E2E sim validation, grammar on | 0 out of graph outputs | 8 |
 
 ## 2. Repository layout (final state)
 
@@ -68,23 +101,28 @@ Targets (simulation):
 CLAUDE.md
 README.md
 docs/
-  PLAN.md
+  PLAN.md                          this file (v2)
+  archive/                         PLAN-v1.md, superseded-decisions.md, README.md
   reference/                       original project documents
   reports/phase-N-<slug>.md        one per phase
-  results/                         final figures and tables (Phase 9)
+  results/                         final figures and tables (Phase 8)
+  hardware/                        Jetson build recipe and bring-up checklist (Phase 9)
 docker/
   Dockerfile  docker-compose.yml  build.sh  requirements.txt  ros_entrypoint.sh
+  Dockerfile.jetson                written and reviewed in Phase 9, built in Phase 10
 ros2_ws/src/
   semantic_waypoint_planner/
     CMakeLists.txt  package.xml  plugin_description.xml
     msg/SemanticGoal.msg  msg/ClarificationRequest.msg
     srv/ResolveWaypoint.srv  srv/AddRoom.srv  srv/ListRooms.srv  srv/GetRoomPose.srv
     include/semantic_waypoint_planner/*.hpp
-    src/annotation_map_node.cpp  src/llm_resolver_node.cpp  src/semantic_goal_node.cpp
-    src/bt_semantic_plugin.cpp    src/bt_speak_text.cpp     src/calibrator.cpp
-    src/grammar_builder.cpp       src/fast_path.cpp
-    semantic_waypoint_planner/    ROS free Python core (graph, prompt, grammar, resolver core, features)
-    scripts/annotate_map.py  scripts/llm_resolver.py  scripts/semantic_cli.py  scripts/run_trials.py
+    src/annotation_map_node.cpp   src/annotation_graph.cpp
+    src/bt_semantic_plugin.cpp    src/bt_speak_text.cpp     src/semantic_goal_node.cpp
+    semantic_waypoint_planner/    ROS free Python core:
+                                    graph.py  prompt.py  grammar.py  resolver_core.py
+                                    relations.py  backends.py  calibrator.py
+    scripts/annotate_map.py  scripts/llm_resolver.py  scripts/semantic_cli.py
+    scripts/run_trials.py    scripts/parity_check.py  scripts/say.py
     behavior_trees/semantic_navigate_to_pose.xml
     config/planner_params.yaml  config/calibrator.json  config/prompts/*.txt
     maps/room_annotations.json
@@ -95,7 +133,7 @@ ros2_ws/src/
     maps/safenav_lab.yaml  maps/safenav_lab.pgm
     config/nav2_params.yaml
     launch/sim.launch.py  launch/loopback_sim.launch.py  launch/nav.launch.py
-    src/loopback_sim_node.cpp (or python)
+    src/loopback_sim_node.cpp
 ml/
   requirements-host.txt
   safenav_ml/  (dataset generation, prompt study, calibration training, metrics, plots)
@@ -108,469 +146,327 @@ models/  *.gguf (ignored)
 third_party/llama.cpp (ignored)
 ```
 
+Note what is absent relative to v1: `src/llm_resolver_node.cpp`, `src/calibrator.cpp`,
+`src/grammar_builder.cpp`, `src/fast_path.cpp`. The resolver stays in Python (D27). The C++ in
+the package is the annotation map node, the BT plugin, and the semantic goal node.
+
 ## 3. Phase 0: scaffolding, environment, downloads
 
-Status: done in the planning session. Kept here so later sessions know what exists.
+Status: `[x]`, merged (#2). Report: `docs/reports/phase-0-scaffolding-environment.md`.
+Full original scope text: `docs/archive/PLAN-v1.md` section 3.
 
-Deliverables:
-- Repository layout above (empty package skeletons are created in Phase 1, not here).
-- `CLAUDE.md`, `docs/PLAN.md`, `.gitignore`, `.dockerignore`, original documents moved to `docs/reference/`.
-- `docker/`: two stage image. `safenav-llm:core` from `tiryoh/ros2-desktop-vnc:humble` with Nav2,
-  slam_toolbox, BehaviorTree.CPP v3, ros2_control, rosbridge, rosbag2 mcap, espeak-ng, Gazebo
-  Fortress libraries, llama.cpp (tag b10941) installed to `/opt/llama.cpp`, llama-cpp-python 0.3.16,
-  sklearn. `safenav-llm:humble` adds the simulation overlay `/opt/sim_ws` built from vendored
-  sources in `third_party/ros_src/` (ros_gz, gz_ros2_control, create3_sim, turtlebot4_simulator,
-  all `humble` branches, commits in `VERSIONS.txt`) because those packages have no arm64 binaries
-  for Humble. Launch entry point for the sim is `turtlebot4_ignition_bringup`.
-- Models downloaded to `models/`: Phi-3 mini 4k instruct Q4_K_M (primary), TinyLlama 1.1B chat
-  Q4_K_M and Phi-3.5 mini instruct Q4_K_M (ablation).
-- Host env `tf_env` extended with llama-cpp-python (Metal), anthropic, pytest, rapidfuzz, Levenshtein.
-- GitHub issue and PR for Phase 0 following the conventions.
-
-DoD:
-- [ ] `docker image ls safenav-llm:humble` shows the image; after `docker compose -f docker/docker-compose.yml up -d`,
-      `docker compose -f docker/docker-compose.yml exec dev bash -lc "ros2 pkg list | grep -c -E '^(nav2_bt_navigator|turtlebot4_ignition_bringup)$'"` prints 2.
-- [ ] Inside the container: `llama-cli --version` works and `python3 -c "import llama_cpp, sklearn"` exits 0.
-- [ ] `ls -l models/*.gguf` shows three files with sizes 2.39 GB, 0.67 GB, 2.39 GB (approximately).
-- [ ] `/opt/anaconda3/envs/tf_env/bin/python -c "import llama_cpp, anthropic, sklearn"` exits 0.
-- [ ] `main` contains CLAUDE.md, docs/PLAN.md, docker/, .gitignore; PR merged, branch deleted.
-
-User actions recorded for Phase 0 (not automatable): raise Docker Desktop memory to 12 GB
-(Settings > Resources) before Phase 2; export `MISTRAL_API_KEY` in the shell before Phase 4.
+Built the two stage Docker image (`safenav-llm:core` and `safenav-llm:humble` with the
+TurtleBot4 simulation overlay at `/opt/sim_ws` vendored from source for arm64), downloaded the
+three GGUF models, extended the host conda env, and established the repo layout and conventions.
 
 ## 4. Phase 1: interfaces and annotation map node
 
-Goal: the location database and all typed interfaces, so every later phase compiles against
-frozen contracts.
+Status: `[x]`, merged (#4). Report: `docs/reports/phase-1-interfaces-annotation-map.md`.
+Full original scope text: `docs/archive/PLAN-v1.md` section 4.
 
-Scope:
-- Package `semantic_waypoint_planner` (ament_cmake, C++17) with `msg/`, `srv/` from section 12,
-  generated in the same package (`rosidl_generate_interfaces`, linked with
-  `rosidl_get_typesupport_target`).
-- `annotation_map_node` (rclcpp Node):
-  - parameter `annotations_path` (default `maps/room_annotations.json` from the package share).
-  - loads and validates the JSON schema (section 12.6); rejects duplicate names or aliases,
-    non-finite poses, unknown edge endpoints; logs and exits non-zero on invalid file.
-  - services `/get_room_pose` (GetRoomPose), `/add_room` (AddRoom, persists back to JSON
-    atomically: write temp then rename), `/list_rooms` (ListRooms).
-  - publishes `/semantic_markers` (`visualization_msgs/MarkerArray`, text marker per room at its
-    pose plus a small arrow, latched QoS transient local) and republishes on every AddRoom.
-  - publishes `/annotation_graph_updated` (`std_msgs/Empty`, transient local) after AddRoom so the
-    resolver can regenerate the grammar (Phase 3 and 5 subscribe to this).
-- `maps/room_annotations.json`: the simulation annotation graph, 10 rooms and 30 named locations
-  in total (rooms plus sub locations), aliases with deliberate overlaps for disambiguation
-  (for example `dock` for `charging_dock`, `docking bay` for `storage_room`), `tags`, `parent`,
-  and `edges` (`adjacent`, `left_of`, `right_of`, `near`). Poses are placeholders until Phase 2
-  fixes them from the world layout; keep names stable from here on.
-- `scripts/annotate_map.py` (rclpy): subscribes to `/initialpose` and `/clicked_point`, prompts on
-  the terminal for canonical name, aliases, tags, parent; appends to the JSON (calls `/add_room`
-  if the node is running, else writes the file). Has a `--from-yaml` mode that imports poses from
-  `safenav_sim/worlds/layout.yaml` without RViz so the sim graph is reproducible.
-- ROS free Python core package `semantic_waypoint_planner/graph.py`: load, validate, alias index,
-  canonical name lookup, adjacency text rendering (used by prompts in Phase 3).
-- Tests: gtest for JSON loading and validation errors, service unit tests through a launch test
-  (`launch_testing`) that starts the node with a fixture JSON and calls all three services;
-  pytest for `graph.py` and `annotate_map.py --from-yaml`.
+Froze the section 12 interfaces, built `annotation_map_node` (rclcpp) with `/get_room_pose`,
+`/add_room`, `/list_rooms`, `/semantic_markers` and `/annotation_graph_updated`, authored
+`room_annotations.json` with 30 named locations and their aliases, tags, parents and edges, and
+the ROS free `graph.py` core.
 
-DoD (all run inside the container from `/ws/ros2_ws`):
-- [ ] `colcon build --packages-select semantic_waypoint_planner` succeeds with no warnings
-      from our sources (`-Wall -Wextra -Wpedantic`).
-- [ ] `ros2 interface show semantic_waypoint_planner/srv/ResolveWaypoint` prints the definition
-      of section 12.2 exactly.
-- [ ] `ros2 run semantic_waypoint_planner annotation_map_node` then
-      `ros2 service call /list_rooms semantic_waypoint_planner/srv/ListRooms` returns 30
-      canonical names and the full alias list; `/get_room_pose {name: charging_dock}` returns
-      `found: true` with frame_id `map`; an unknown name returns `found: false`.
-- [ ] `ros2 service call /add_room ...` with a new room makes `/list_rooms` return 31 names, the
-      JSON on disk contains it, `/semantic_markers` has 31 markers, `/annotation_graph_updated`
-      fired once; calling it again with the same name returns `success: false`.
-- [ ] `colcon test --packages-select semantic_waypoint_planner && colcon test-result --verbose`
-      reports 0 failures.
-- [ ] `pytest ros2_ws/src/semantic_waypoint_planner/test/python` passes on the host too
-      (graph.py has no ROS imports).
-- [ ] Report written, PR merged.
-
-Gate: interfaces frozen; `room_annotations.json` names fixed.
+**Carried into Phase 5:** the `edges` list in `room_annotations.json` was authored for prompt
+rendering, not for programmatic traversal. Phase 5 audits it. See section 8.
 
 ## 5. Phase 2: simulation world, map, Nav2 bringup
 
-Goal: a TurtleBot4 in a 10 room Gazebo Fortress world that navigates to any annotated pose from a
-CLI, plus a fast loopback simulator for batch experiments.
+Status: `[x]`, merged (#6). Report: `docs/reports/phase-2-sim-world-nav2-bringup.md`.
+Full original scope text: `docs/archive/PLAN-v1.md` section 5.
 
-Scope:
-- Package `safenav_sim` (ament_cmake with Python scripts).
-- `worlds/layout.yaml`: 10 rooms on one floor (reception, kitchen, server_room, charging_dock,
-  meeting_room_a, meeting_room_b, storage_room, lab, office, workshop) with wall rectangles, door
-  gaps, and the 30 named location poses (room docking poses plus sub locations such as
-  `coffee_machine`, `printer`, `fire_exit`, `main_entrance`, `lab_bench_1`, `lab_bench_2`,
-  `whiteboard`, `kitchen_sink`). Approximately 20 m x 14 m.
-- `scripts/gen_world.py`: renders `worlds/safenav_lab.sdf` from the YAML (box walls, floor, a few
-  furniture boxes, lights). Deterministic; committed output.
-- `launch/sim.launch.py`: starts Gazebo Fortress headless or with GUI (`gui:=true|false`) via
-  `turtlebot4_ignition_bringup` (from `/opt/sim_ws`) with the custom world (set
-  `IGN_GAZEBO_RESOURCE_PATH`), spawns the TB4 at the reception pose, starts robot state publisher
-  and ros_gz bridges as the TB4 sim does. Rendering in the container is software GL
-  (`LIBGL_ALWAYS_SOFTWARE=1`); expect a low real time factor. If the TB4 sim cannot run at all in
-  the container, the loopback simulator below becomes the only sim mode and this is recorded as a
-  deviation; do not spend more than one session fighting Gazebo.
-- Map: run slam_toolbox in the sim (scripted teleop or waypoint sweep) or rasterize the map
-  directly from `layout.yaml` with `scripts/gen_map.py` (preferred: deterministic, identical
-  geometry). Commit `maps/safenav_lab.pgm` and `.yaml`.
-- `config/nav2_params.yaml`: Nav2 Humble params for TB4 (AMCL, Smac 2D planner, DWB controller,
-  costmaps) copied from `turtlebot4_navigation` and adjusted; `bt_navigator.plugin_lib_names`
-  left as stock (Phase 6 adds `semantic_waypoint_planner`).
-- `launch/nav.launch.py`: map server, AMCL (with initial pose set from launch arg), Nav2 bringup,
-  RViz2 optional, `annotation_map_node` with the sim graph.
-- Loopback simulator `loopback_sim_node`: subscribes `/cmd_vel`, integrates a unicycle model at
-  50 Hz, publishes `/odom`, TF `odom -> base_link`, and a fake `/scan` from ray casting against the
-  static map (so costmaps still work), publishes `map -> odom` identity (no AMCL needed).
-  `launch/loopback_sim.launch.py` runs it with Nav2 and the annotation node. Used for the 150 run
-  batches in Phase 8 and any experiment where Gazebo speed is a bottleneck.
-- `annotate_map.py --from-yaml` (Phase 1) updated so `room_annotations.json` poses equal the layout.
-- `scripts/goto.py`: `ros2 run safenav_sim goto --room kitchen` sends NavigateToPose to the pose
-  from `/get_room_pose` using `nav2_simple_commander`; prints result and elapsed time.
+Built `safenav_sim`: the 20 x 14 m ten room world generated from `layout.yaml`, the rasterized
+map, Nav2 params for the TB4, and the loopback simulator (unicycle integrator, ray cast
+`/scan`, identity `map -> odom`). The ten room tour passes 10 of 10 in loopback.
 
-DoD:
-- [ ] `ros2 launch safenav_sim sim.launch.py gui:=false` brings up Gazebo, `ros2 topic hz /scan`
-      shows > 5 Hz and `/odom` > 10 Hz within 60 s.
-- [ ] `ros2 launch safenav_sim nav.launch.py` reaches Nav2 lifecycle `active` for all servers
-      (`ros2 lifecycle get /bt_navigator` prints active).
-- [ ] Gazebo mode: `goto --room X` succeeds for all 10 room docking poses in a scripted sequence
-      (`scripts/tour.py`), with 10 of 10 goal reached results, logged to `data/runs/phase2_tour_gazebo.jsonl`.
-- [ ] Loopback mode: same tour succeeds 10 of 10 in under 5 minutes total.
-- [ ] `room_annotations.json` poses match `layout.yaml` (test asserts equality).
-- [ ] `/semantic_markers` visible in RViz2 through the noVNC desktop (screenshot saved to
-      `docs/reports/img/phase2_rviz_markers.png`).
-- [ ] `colcon test` passes for both packages. Report written, PR merged.
-
-Gate: the robot can reach every annotated pose from a plain pose goal, in both sim modes.
+**Gazebo does not work in the container (D11)** and is not pursued further: robot spawn
+segfaults the Ignition server in its software renderer. Loopback is the only simulation mode
+for the rest of the plan (D30). The packaging bug found in `turtlebot4_ignition_bringup` along
+the way is documented in the phase 2 report.
 
 ## 6. Phase 3: LLM resolver prototype (Python, GBNF grammar)
 
-Goal: a working `/resolve_waypoint` service in rclpy backed by llama-cpp-python, with the
-grammar, the fast path, the features needed for calibration, and a ROS free core usable from the
-host for the prompt study.
+Status: `[x]`, merged (#10). Report: `docs/reports/phase-3-llm-resolver-prototype.md`.
+Full original scope text: `docs/archive/PLAN-v1.md` section 6.
 
-Scope (ROS free core in `semantic_waypoint_planner/` Python package):
-- `prompt.py`: builds the chat prompt in the Phi-3 instruct format from a template file in
-  `config/prompts/`: system text (facility name, task, available locations with aliases,
-  adjacency sentences from edges), optional few shot examples (0, 5, 10, 20 from
-  `config/prompts/fewshot.jsonl`), the user command. Template has a version string.
-- `grammar.py`: builds the GBNF string from the canonical names exactly as section 12.5, with a
-  configurable `allow_none` sentinel (`"none"`) that lets the model abstain. Unit test proves
-  every canonical name is accepted and any other string is rejected by the grammar (use
-  `llama_cpp.LlamaGrammar.from_string` and a parse check on sample outputs).
-- `resolver_core.py`: class `ResolverCore(model_path, graph, config)`:
-  - loads the model once (`n_ctx=2048`, `n_threads` param, `temperature` param, `max_tokens=256`).
-  - caches the static prompt prefix KV state (llama-cpp-python `LlamaRAMCache` or explicit
-    `save_state`/`load_state`) so each call only evaluates the command and the answer.
-  - `resolve(command, candidates, grammar_on=True) -> ResolveResult` with fields: room,
-    raw_confidence, reasoning (empty when grammar on), token_entropy, room_ranking (top k with
-    scores), latency_ms, mode (`fast_path`, `llm_grammar`, `llm_free`), out_of_graph (bool, only
-    meaningful when grammar off), raw_text.
-  - fast path: normalized command exactly equals a canonical name or alias, or matches after
-    stripping a leading verb phrase from a fixed list ("go to", "navigate to", "head to", "take me
-    to", "move to"); returns `raw_confidence=0.99`, `token_entropy=0.0`, `mode=fast_path`, under 5 ms.
-  - candidate scoring for ranking and entropy: after the prefix, for every candidate name compute
-    the sequence log likelihood of `"room": "<name>"` tokens in one batched pass reusing the prefix
-    KV cache; `room_ranking` is the softmax over these log likelihoods; `token_entropy` is the
-    entropy of that distribution in nats. If batched scoring is not feasible in llama-cpp-python,
-    fall back to entropy of the grammar masked next token distribution at the first room token
-    and document it. Top-3 accuracy in Phase 4 comes from `room_ranking`.
-  - `features(result, command, n_candidates) -> [raw_confidence, token_entropy, n_candidates,
-    len(command), min Levenshtein distance between the resolved name (and its aliases) and any
-    equal length window of the normalized command]` (section 12.7).
-  - calibrator hook: loads `config/calibrator.json` if present (Phase 7 format, section 12.8);
-    until then `calibrated_confidence = raw_confidence` and the response flags `calibrator_loaded=false`.
-- `scripts/llm_resolver.py` (rclpy node `llm_resolver_node_py`): parameters from
-  `config/planner_params.yaml` (`model_path` resolved against `SAFENAV_MODELS_DIR`, `n_ctx`,
-  `n_threads`, `temperature`, `max_tokens`, `timeout_ms`, `grammar_on`, `fewshot_count`,
-  `prompt_template`); calls `/list_rooms` at startup and on `/annotation_graph_updated` to rebuild
-  the grammar and prompt prefix; serves `/resolve_waypoint`; runs inference in a worker thread
-  (`MultiThreadedExecutor`, reentrant callback group, a lock around the model) and enforces
-  `timeout_ms` by returning `success=false` with `reasoning="timeout"`; calls `/get_room_pose`
-  for the resolved name; fills every response field of section 12.2.
-- `scripts/semantic_cli.py`: `ros2 run semantic_waypoint_planner semantic_cli "go to the kitchen"`
-  prints the full response as JSON (used everywhere for manual checks).
-- `launch/resolver_only.launch.py`: annotation node plus the Python resolver.
-- Tests: pytest on host (Metal) for grammar, prompt, fast path, features, and one real model
-  smoke test (marked `slow`) resolving "go to the kitchen" to `kitchen`; launch test in container
-  calling the service for five commands and checking `success`, room names in graph, latency
-  recorded.
+Built the ROS free resolver core (`prompt.py`, `grammar.py`, `resolver_core.py`) and the rclpy
+node serving `/resolve_waypoint` with the fast path, grammar constrained decoding, prefix KV
+caching, the five calibration features, and inference off the executor thread. Metal p50/p90
+2874 / 3678 ms; container CPU tens of seconds to minutes (D16, D18).
 
-DoD:
-- [ ] Host: `pytest ml/tests ros2_ws/src/semantic_waypoint_planner/test/python -m "not slow"` passes;
-      `pytest -m slow` passes using `models/phi3-mini-4k-instruct.Q4_K_M.gguf`.
-- [ ] Container: `ros2 launch semantic_waypoint_planner resolver_only.launch.py` then
-      `semantic_cli "go to the kitchen"` returns `matched_room_name: kitchen`, `success: true`,
-      `resolver_mode: fast_path` or `llm_grammar` and a pose in frame `map`.
-- [ ] `semantic_cli "somewhere I can charge the robot"` returns `charging_dock` via `llm_grammar`.
-- [ ] `semantic_cli "go to the cafeteria"` returns a room from the graph or `none`, never a string
-      outside the grammar (assert in a test over 20 adversarial commands).
-- [ ] With `grammar_on:=false`, the same 20 adversarial commands produce at least one
-      `out_of_graph=true` response (documented number in the report).
-- [ ] Latency: 20 consecutive calls to a fixed command in the container, p50 and p90 recorded in
-      the report for CPU; the same on host Metal via a script in `ml/`. Prefix caching verified by
-      showing the second call's prompt eval token count is only the command length.
-- [ ] Adding a room through `/add_room` makes the next `semantic_cli` call able to return it
-      (grammar regenerated, no restart).
-- [ ] Report written, PR merged.
-
-Gate: end to end resolution service works in the container; features and ranking available.
+**Carried into Phase 5:** D12 (ranking and entropy are heuristic, not model scores), D14
+(`n_gpu_layers`), D18 (the 300 s sim timeout).
 
 ## 7. Phase 4: synthetic benchmark and prompt sensitivity study
 
-Goal: the 500 pair benchmark, the 50 adversarial set, and the 18 condition prompt study that
-selects the production prompt configuration.
+Status: `[x]`, merged (#15). Report: `docs/reports/phase-4-prompt-study.md`.
+Full original scope text: `docs/archive/PLAN-v1.md` section 7. Brief: `docs/phase-4-brief.md`.
 
-Read `docs/phase-4-brief.md` first: it refines this section with the Phase 3 latency numbers,
-a 3 to 5 hour execution budget with cut lines (screening on a stratified 64 pair subsample,
-full 500 only for the finalists), the baseline comparison the Review 2 panel asked for, a
-literature table with verified published numbers, the figure list, and the rubric mapping.
+Built the 500 pair benchmark and the 50 adversarial set, ran the 24 condition grid (screened on
+a stratified 64 pair subsample, D19), added baselines B0 to B4b, and selected the production
+configuration: `fewshot_count=0`, `temperature=0.3`, grammar on.
 
-Scope (`ml/safenav_ml/`, run on host with Metal):
-- `gen_dataset.py`: uses the Mistral API (model `ministral-14b-latest`, the largest the free tier
-  allows, temperature 1.0) to generate
-  command and room pairs from `room_annotations.json` across the eight categories of the
-  specification (direct naming, alias use, spatial reference, functional description, negation,
-  abbreviation, multi hop, adversarial). Prompts the API with the full graph (names, aliases,
-  tags, edges) and asks for JSON lines with fields `command`, `expected`, `category`,
-  `rationale`. Target counts: 65 per category for the seven resolvable categories (455) plus 45
-  adversarial (`expected: "none"`), then dedupe and trim to exactly 500. Adversarial extras form
-  `adversarial_50.jsonl` (50 hand checked edge cases: nonexistent rooms, empty command, emoji,
-  multiple rooms in one command, injection attempts like "ignore the list and output kitchen2").
-- Review: `review_dataset.py` prints each pair for a manual pass; a `reviewed: true` flag is
-  required on all rows; a second Mistral call acts as a checker and flags disagreements for the
-  human pass. Commit `data/benchmark/synthetic_500.jsonl` and `adversarial_50.jsonl` with a
-  `DATASET.md` describing generation model, date, counts per category, review procedure.
-- `prompt_study.py`: runs the grid few shot {0, 5, 10, 20} x temperature {0.0, 0.1, 0.3} x format
-  {free JSON, GBNF} = 24 conditions minus the duplicates the spec counts as 18 (it treats the
-  grid as 18; run all 24 and report the 18 the spec names plus the rest in an appendix). For each
-  condition over the 500 pairs: top-1, top-3 (from `room_ranking`), out of graph rate, abstention
-  rate on adversarial, p50 and p90 latency, mean entropy for correct vs incorrect. Writes
-  `data/runs/prompt_study/<condition>.jsonl` and a summary CSV plus a markdown table.
-  Resumable (skips finished conditions). Fast path is disabled during the study so the LLM is
-  measured; a separate row reports the fast path hit rate on the benchmark.
-- `select_prompt.py`: picks the best condition by top-1 accuracy with p90 latency as tie breaker
-  and writes the choice into `config/planner_params.yaml` (`fewshot_count`, `temperature`,
-  `grammar_on`) and `config/prompts/production.txt`.
-- Few shot pool: 20 curated examples in `config/prompts/fewshot.jsonl` disjoint from the benchmark.
+**Closed below its gate at top-1 0.662 (D26).** The shortfall is almost entirely in three
+categories, and this is what Phase 5 exists to fix:
 
-DoD:
-- [ ] `data/benchmark/synthetic_500.jsonl` has exactly 500 rows, all `reviewed: true`, category
-      counts documented, no duplicate commands, all `expected` values in the graph or `none`.
-- [ ] `data/benchmark/adversarial_50.jsonl` has exactly 50 rows.
-- [ ] `prompt_study.py` completed all conditions; summary table committed to
-      `docs/reports/phase-4-prompt-study.md` with the 18 spec conditions.
-- [ ] Grammar on conditions show 0 out of graph outputs on all 500 x 12 runs.
-- [ ] Best grammar on condition reaches top-1 >= 80% on the 500 benchmark (baseline gate);
-      report top-3 as well. If below 80%, iterate on the prompt template (document each iteration)
-      before merging; do not lower the gate.
-- [ ] `config/planner_params.yaml` and `config/prompts/production.txt` updated with the selection.
+| category | n | top-1 | correct |
+|----------|---|-------|---------|
+| negation | 65 | 0.969 | 63 |
+| alias | 65 | 0.954 | 62 |
+| direct | 65 | 0.923 | 60 |
+| abbreviation | 65 | 0.862 | 56 |
+| functional | 65 | 0.692 | 45 |
+| **adversarial** | 45 | **0.400** | 18 |
+| **spatial** | 65 | **0.262** | 17 |
+| **multi_hop** | 65 | **0.154** | 10 |
+| total | 500 | 0.662 | 331 |
+
+Error analysis (phase 4 report section 4.2) found the model answering a fixed room regardless
+of the referent on spatial commands: it was not traversing the adjacency block in the prompt.
+Two prompt iterations were tried; the more elaborate one made it worse.
+
+## 8. Phase 5: relational decomposition and resolver backend
+
+Goal: recover resolver accuracy to the 0.80 gate by moving graph traversal out of the model and
+into code, and put inference behind a backend seam that deploys unchanged to the Jetson.
+
+Replaces v1's C++ resolver phase entirely (D27, and `superseded-decisions.md` S1).
+
+### 8.1 Relational decomposition
+
+The model stops being asked to traverse. It names the location the command refers to and the
+spatial relation the command uses. Traversal is a deterministic lookup over `edges`.
+
+- `grammar.py`: extend the generated GBNF to section 12.6's v2 form, adding a `relation` field
+  over the closed set `none | left_of | right_of | adjacent | near | within`. `none` means the
+  current behaviour: `room` is the answer. Anything else means `room` is the **anchor** and the
+  answer is the hop target. The output stays closed set and structurally guaranteed.
+- `relations.py` (new): the traversal and its disambiguation policy.
+  - `resolve_relation(graph, anchor, relation, command) -> (name | None, n_targets)`.
+  - `within` resolves to the anchor's `parent`, which covers "the room with the coffee machine".
+  - Exactly one target: that is the answer.
+  - Zero targets: abstain, answer `none`. Never guess a sibling.
+  - More than one target: disambiguate by alias and tag overlap with the normalized command; if
+    still tied, abstain. Return `n_targets` either way so Phase 7 can use it.
+- `resolver_core.py`: apply the hop after decoding, before the pose lookup. `ResolveResult`
+  gains `anchor_room`, `relation`, `n_relation_targets` (Python internal, not an interface).
+  `matched_room_name` in the service response is still the single final room.
+- `prompt.py`: the system template documents the two field contract and the relation vocabulary
+  with two or three worked examples. Keep it short. Phase 4 established that elaborate rule
+  blocks hurt this model (v2 template, rejected).
+
+**Edge coverage audit, do this first.** `room_annotations.json`'s `edges` were authored in
+Phase 1 to render adjacency sentences into a prompt, not to be traversed. Before writing the
+decomposition, check and fix:
+
+- every relation used by the benchmark's `spatial` and `multi_hop` rows has edges that support it;
+- inverse edges are materialized (`A left_of B` implies `B right_of A`; `adjacent` and `near`
+  are symmetric) either in the file or in `graph.py` at load time, with a unit test;
+- sub locations have correct `parent` values, since `within` depends on them.
+
+Report the audit as a table: relation, edges before, edges after, benchmark rows it serves. If
+the graph turns out to be the limiting factor rather than the model, say so plainly, because
+that changes the conclusion of the whole phase.
+
+### 8.2 Backend seam
+
+- `backends.py` (new): `InProcessBackend` (llama-cpp-python, current behaviour) and
+  `HttpBackend` (llama.cpp `llama-server`, POST `/completion` with the identical GBNF string in
+  the `grammar` field, `temperature`, `n_predict`). One interface:
+  `complete(prompt, grammar, **params) -> (text, timing, prompt_eval_tokens)`.
+- Resolver parameter `backend` (`inprocess` default) and `backend_url`
+  (default `http://host.docker.internal:8080`).
+- `docs/hardware/llama-server.md`: how to start the server on the macOS host with Metal, and
+  the equivalent Jetson CUDA invocation (the flags only, the Jetson build lands in Phase 9).
+- The container's `/etc/hosts` route to the host must be verified from inside the container,
+  not assumed.
+
+### 8.3 Model check
+
+Pull the Phi-3.5 mini row of v1's Phase 9 forward. Run the production configuration on the full
+500 with `models/phi3.5-mini-instruct.Q4_K_M.gguf`. If it beats Phi-3 mini by more than 2
+points, promote it to production and note it; the remaining ablation rows stay in Phase 8.
+
+### 8.4 Measurement honesty
+
+Two prompt iterations have already been run against this same 500 (phase 4 section 4.2). This
+phase makes a third change informed by per-category error analysis, which is tuning on the test
+set unless handled.
+
+- Develop the decomposition against the `spatial` + `multi_hop` hard subset only.
+- Before the full 500 run, freeze the implementation.
+- Validate on `data/benchmark/adversarial_50.jsonl` (untouched since Phase 4) and on a
+  deterministic held-out 100 row slice of the 500 that is reported separately.
+- The report states the exposure in one short paragraph. A Review 2 panel will ask.
+
+### DoD
+
+- [ ] Edge coverage audit table in the report; inverse edge materialization unit tested.
+- [ ] GBNF v2 accepts every `(canonical, relation)` pair and rejects everything else
+      (extend the existing Phase 3 grammar test).
+- [ ] `relations.py` unit tested on the full hop matrix including the zero target and multi
+      target abstention paths.
+- [ ] Backend parity: 100 benchmark commands, `inprocess` vs `http`, same model, temperature 0,
+      agreement >= 99%. Any disagreement explained.
+- [ ] Full 500, production configuration, grammar on: **top-1 >= 0.80**, top-3 >= 0.88,
+      out of graph rate 0.0.
+- [ ] Per category floors that make the total reachable: `spatial` >= 0.80, `multi_hop` >= 0.65,
+      `functional` >= 0.75, and no regression below 0.85 on `direct`, `alias`, `negation`,
+      `abbreviation`.
+- [ ] Held-out 100 row slice and `adversarial_50.jsonl` reported separately from the headline.
+- [ ] Latency on the Metal backend: p50, p90, p99 over 100 calls, p90 < 3000 ms. Container CPU
+      number reported alongside per section 13.
+- [ ] `semantic_cli "the room to the left of the kitchen"` returns the correct room via the hop,
+      with `relation` and `anchor_room` visible in the JSON output.
+- [ ] Phi-3.5 comparison row recorded; production model stated explicitly.
 - [ ] Report written, PR merged.
 
-Gate: production prompt configuration selected; benchmark accuracy >= 80%.
+**If top-1 lands between 0.74 and 0.80**, that is still a large improvement over 0.662. Merge
+with a documented analysis of which categories fell short and why, and carry the gap into the
+Phase 8 results. **Below 0.74**, the decomposition did not work as designed: stop, report the
+error analysis, and do not start a fourth prompt iteration. The arithmetic to watch mid-phase
+is in section 7's table, where 400 of 500 is the 0.80 gate.
 
-## 8. Phase 5: LLM resolver node in C++ (llama.cpp C API)
-
-Goal: the final `llm_resolver_node` as an rclcpp component with the same behavior as the Python
-prototype, inference off the executor thread, grammar regeneration on graph updates.
-
-Scope:
-- `src/llm_resolver_node.cpp` (`rclcpp_components` component `semantic_waypoint_planner::LlmResolverNode`,
-  also a standalone executable `llm_resolver_node`):
-  - loads the GGUF via `llama_model_load_from_file`, creates one context (`n_ctx=2048`,
-    `n_threads` param), keeps it warm.
-  - system prefix evaluated once per graph version; KV state saved with `llama_state_seq_get_data`
-    (or `llama_state_get_data`) and restored per request.
-  - sampler chain: grammar sampler (`llama_sampler_init_grammar`) built from `grammar_builder.cpp`
-    (same GBNF as Python, byte identical for the same graph, unit tested), temperature, greedy at
-    temperature 0.
-  - candidate scoring for ranking and entropy in a single `llama_decode` batch with one sequence
-    per candidate sharing the prefix (`llama_batch` with `seq_id` per token, prefix copied with
-    `llama_kv_self_seq_cp` or the equivalent in b10941); if this exceeds 300 ms for 30 candidates,
-    fall back to first token grammar masked entropy and record the decision.
-  - fast path (`fast_path.cpp`) with the same rules as Python; parity test on 50 commands.
-  - request handling: service callback in a reentrant callback group; a fixed pool of two worker
-    threads (`std::thread` pool or `rclcpp::experimental` equivalent; the spec names
-    `rclcpp::ThreadPool`, use a small in house pool if that class is unavailable in Humble and
-    record it) executes inference; the callback waits on a future with `timeout_ms` and returns
-    `success=false, reasoning="timeout"` on expiry while the worker finishes and discards.
-  - subscribes `/annotation_graph_updated`, calls `/list_rooms`, rebuilds grammar and prefix.
-  - calibrator (`calibrator.cpp`): loads `config/calibrator.json` (section 12.8), computes the
-    five features, outputs `calibrated_confidence`; identity when the file is absent.
-  - logs one JSON line per request to a rotating file under `data/runs/resolver/` and to the ROS
-    log at INFO with command, room, raw, calibrated, entropy, mode, latency.
-- Parity harness: `scripts/parity_check.py` runs 100 benchmark commands through both the Python
-  and C++ services (temperature 0, grammar on) and reports agreement (expected >= 95%; small
-  differences allowed from scoring implementation details, explain any).
-- `launch/resolver_only.launch.py` gains `impl:=cpp|python` (default cpp).
-
-DoD:
-- [ ] `colcon build` clean; component loadable:
-      `ros2 component load /ComponentManager semantic_waypoint_planner semantic_waypoint_planner::LlmResolverNode`.
-- [ ] All Phase 3 DoD service checks pass against the C++ node.
-- [ ] Executor never blocked: while a resolution is running, `ros2 service call /list_rooms` on
-      the annotation node and a second `/resolve_waypoint` request are both served (second one
-      queued on the pool); demonstrated by a launch test with timestamps.
-- [ ] Timeout path: with `timeout_ms:=50` the service returns within 100 ms with `success=false`
-      and the node keeps serving afterwards.
-- [ ] Parity >= 95% on 100 commands versus Python; documented.
-- [ ] Latency in container (CPU) for the production prompt: p50, p90, p99 over 100 calls recorded;
-      prefix caching shown by prompt eval token counts.
-- [ ] Memory: RSS of the node after 100 calls is stable (no growth > 5%) as shown by `ps`.
-- [ ] Report written, PR merged.
-
-Gate: C++ resolver is the default implementation.
+Gate: resolver raw top-1 >= 0.80, or a documented shortfall with the band above respected.
 
 ## 9. Phase 6: BT plugin, semantic goal node, end to end in simulation
 
 Goal: `SemanticNavigateToPose` as a native Nav2 BT node, the operator facing goal node, the
-fallback subtree, and the first full command to navigation runs in both sim modes.
+fallback subtree, and the first full command to navigation runs. Loopback only (D30).
 
-Scope:
-- `src/bt_semantic_plugin.cpp`: `semantic_waypoint_planner::SemanticNavigateToPose : public BT::ActionNodeBase`
-  (BehaviorTree.CPP v3 as used by Nav2 Humble). Ports: input `command` (string), input
-  `confidence_threshold` (double, default 0.72), input `timeout_ms` (int, default 3000), output
-  `resolved_pose` (`geometry_msgs::msg::PoseStamped`), output `resolved_room` (string), output
-  `calibrated_confidence` (double). Gets the ROS node from the blackboard key `node`. tick():
-  1. read `command`; empty -> FAILURE with a log line.
-  2. call `/list_rooms` (wait up to 200 ms).
-  3. send `/resolve_waypoint` asynchronously; poll the future with `spin_until_future_complete`
-     on a private callback group executor with `timeout_ms`; return RUNNING is not used because
-     Nav2's tick loop is fast enough and the spec asks for a bounded blocking call; document.
-  4. timeout -> publish `ClarificationRequest` with `reason="timeout"`, return FAILURE.
-  5. read `calibrated_confidence` from the response.
-  6. `>= threshold` and `success` -> set output ports, return SUCCESS.
-  7. else publish `ClarificationRequest` (`reason="low_confidence"` or `"unresolved"`), return FAILURE.
-  `halt()` cancels the pending future. Registered with `BT_REGISTER_NODES(factory)` (this is what
-  `bt_navigator` loads through `plugin_lib_names`) and also exported in `plugin_description.xml`
-  with pluginlib as the specification shows.
-- `src/bt_speak_text.cpp`: `SpeakText` BT sync action: input `text`; publishes
-  `std_msgs/String` on `/tts_text` and, if parameter `tts_backend=espeak`, runs `espeak-ng` in a
-  detached process. Also publishes a lightring pattern on `/cmd_lightring`
-  (`irobot_create_msgs/LightringLeds`) when `led:=true`.
-- `behavior_trees/semantic_navigate_to_pose.xml`: Sequence of `SemanticNavigateToPose`
-  (`command="{command}"`, outputs to `{resolved_pose}`) then the stock Nav2 navigate subtree
-  (`ComputePathToPose goal="{resolved_pose}"`, `FollowPath`, recoveries), wrapped in a Fallback
-  whose second branch is `SpeakText` with the clarification text built from `/list_rooms`
-  (a `ListRoomsToText` helper node or the text passed through the ClarificationRequest handler in
-  the goal node; choose one and document).
-- `src/semantic_goal_node.cpp` (`rclcpp_lifecycle::LifecycleNode`):
-  - subscribes `/semantic_goal` (SemanticGoal, reliable, depth 1); validates (non empty command,
-    threshold in [0, 1], frame `map` or empty).
-  - renders the BT XML template with the command as the `command` port literal (XML escaped) and
-    the threshold, writes it to `data/runs/bt/<timestamp>.xml`, and sends `NavigateToPose` with
-    `behavior_tree` set to that path and a dummy pose (ignored by the tree). This is how a string
-    reaches the blackboard through Nav2's `NavigateToPose` action; recorded as a design decision.
-  - subscribes `/clarification_request` and republishes a human readable string on `/tts_text`
-    listing known rooms ("I am not sure which location you mean. I know: ... Could you rephrase?").
-  - publishes `/semantic_goal_result` (`std_msgs/String` JSON: command, room, confidence, nav
-    result, timings) per goal, consumed by the trial runner in Phase 8.
-- `config/nav2_params.yaml` in `safenav_sim`: add `semantic_waypoint_planner` to
-  `bt_navigator.plugin_lib_names` (the one line change) and `default_nav_to_pose_bt_xml` left stock.
-- `launch/semantic_nav.launch.py`: annotation node, resolver (cpp), semantic goal node, and the
-  chosen sim (`sim:=gazebo|loopback`) with Nav2.
-- `scripts/say.py`: `ros2 run semantic_waypoint_planner say "go to the kitchen"` publishes a
-  SemanticGoal and waits for `/semantic_goal_result`.
+Scope is unchanged from v1 section 9 except that Gazebo DoD items are removed and the resolver
+behind the service is the Python node. Summarized here; consult `docs/archive/PLAN-v1.md`
+section 9 for the full original prose.
 
-DoD:
-- [ ] `bt_navigator` starts with the plugin listed and logs no plugin load error;
-      `ros2 param get /bt_navigator plugin_lib_names` includes `semantic_waypoint_planner`.
-- [ ] Loopback sim: `say "go to the kitchen"` results in the robot reaching the kitchen pose
-      (distance < 0.5 m) and `/semantic_goal_result` shows `nav_result: succeeded`.
-- [ ] Gazebo sim: the same for three rooms (kitchen, server_room, charging_dock), video or
-      screenshot saved under `docs/reports/img/`.
-- [ ] `say "go to the cafeteria"` yields FAILURE from the BT node, a `ClarificationRequest`
-      message, a `/tts_text` message listing rooms, and no navigation motion (`/cmd_vel` stays zero).
-- [ ] Timeout path: with the resolver stopped, `say` returns within `timeout_ms + 500 ms` with
+- `src/bt_semantic_plugin.cpp`: `semantic_waypoint_planner::SemanticNavigateToPose :
+  public BT::ActionNodeBase` (BehaviorTree.CPP v3). Input ports `command`,
+  `confidence_threshold` (default 0.72), `timeout_ms`; output ports `resolved_pose`,
+  `resolved_room`, `calibrated_confidence`. tick(): read command, empty -> FAILURE; call
+  `/list_rooms` (200 ms budget); send `/resolve_waypoint` and wait on the future with
+  `timeout_ms` on a private callback group executor; timeout -> `ClarificationRequest`
+  (`reason="timeout"`) and FAILURE; at or above threshold with success -> set ports, SUCCESS;
+  otherwise `ClarificationRequest` (`low_confidence` or `unresolved`) and FAILURE. `halt()`
+  cancels the pending future. `BT_REGISTER_NODES(factory)` plus `plugin_description.xml`.
+- `src/bt_speak_text.cpp`: `SpeakText` sync action publishing `std_msgs/String` on `/tts_text`.
+  The `espeak-ng` subprocess and the `/cmd_lightring` pattern are optional; wire the topic
+  first and only add them if the phase is running ahead.
+- `behavior_trees/semantic_navigate_to_pose.xml`: Sequence of `SemanticNavigateToPose` then the
+  stock Nav2 navigate subtree on `{resolved_pose}`, wrapped in a Fallback whose second branch
+  is `SpeakText` with the clarification text.
+- `src/semantic_goal_node.cpp` (`rclcpp_lifecycle::LifecycleNode`): subscribes `/semantic_goal`,
+  validates, renders the BT XML with the command as a port literal (XML escaped) to
+  `data/runs/bt/<timestamp>.xml`, sends `NavigateToPose` with `behavior_tree` set to that path
+  (D6). Subscribes `/clarification_request` and republishes a human readable string on
+  `/tts_text`. Publishes `/semantic_goal_result` JSON per goal.
+- `safenav_sim/config/nav2_params.yaml`: add `semantic_waypoint_planner` to
+  `bt_navigator.plugin_lib_names`.
+- `launch/semantic_nav.launch.py`: annotation node, resolver, semantic goal node, loopback sim,
+  Nav2. `scripts/say.py` for operator commands.
+
+### DoD
+
+- [ ] `ros2 param get /bt_navigator plugin_lib_names` includes `semantic_waypoint_planner`,
+      no plugin load error in the log.
+- [ ] `say "go to the kitchen"` reaches the kitchen pose (distance < 0.5 m),
+      `/semantic_goal_result` shows `nav_result: succeeded`.
+- [ ] A relational command (`say "the room to the left of the kitchen"`) navigates to the
+      correct room end to end, exercising the Phase 5 hop through the full stack.
+- [ ] `say "go to the cafeteria"` yields FAILURE, a `ClarificationRequest`, a `/tts_text`
+      message listing rooms, and `/cmd_vel` stays zero.
+- [ ] Timeout path: resolver stopped, `say` returns within `timeout_ms + 500 ms` with
       `reason: timeout`, robot does not move.
-- [ ] Tick never stalls Nav2 longer than `timeout_ms`: `bt_loop_duration` warnings are absent
-      apart from the resolution tick, checked in the log.
-- [ ] Launch test covering the success, low confidence, and timeout paths in loopback mode.
+- [ ] No `bt_loop_duration` warnings beyond the resolution tick.
+- [ ] Launch test covering success, low confidence, and timeout paths.
 - [ ] Report written, PR merged.
 
-Gate: end to end command to navigation works in simulation with fallback behaviors.
+Gate: end to end command to navigation works in loopback with fallback behaviours.
 
 ## 10. Phase 7: confidence calibration pipeline
 
 Goal: the five feature Platt scaled logistic regression trained on simulated deployment logs,
-exported for the C++ resolver, with ECE and the safety threshold.
+loaded by the resolver, with ECE, the safety threshold, and the gated accuracy headline.
 
-Scope:
-- Simulated deployment logs (stand in for the human sessions, which are Phase 10):
-  `ml/safenav_ml/gen_personas.py` generates two disjoint command sets with the Mistral API,
-  each from five non expert personas (admin staff x2, non robotics PhD students x2, undergraduate
-  from another department x1) who "know the robot has 30 locations but not the exact names":
-  session 1 has 5 x 40 = 200 commands, session 2 has 5 x 20 = 100 commands, both labeled with the
-  intended location, categories balanced like the benchmark, no overlap with each other or with
-  the 500 benchmark (checked by normalized string equality and a fuzzy threshold).
-  Committed to `data/calibration/session1_sim.jsonl` and `session2_sim.jsonl`.
-- `scripts/run_trials.py` (container): replays a command file through `/semantic_goal` with the
-  gate disabled (threshold 0.0) in loopback mode, records per trial: command, intended, resolved
-  room, raw confidence, entropy, n candidates, command length, edit distance, mode, latency,
-  nav outcome (reached intended, reached wrong, rejected), into `data/calibration/session1_trials.jsonl`.
-  Session 1 is the training set. (Navigation outcome in loopback is deterministic; the label used
-  for calibration is `resolved == intended`.)
-- `ml/safenav_ml/train_calibrator.py`: `StandardScaler` plus `LogisticRegression` on the five
-  features (this is the Platt scaled model); 5 fold leave one persona out CV; reports ECE (10
-  equal width bins), Brier score, reliability diagram; compares against raw confidence ECE and an
-  isotonic variant (report only). Picks the threshold as the lowest value achieving false pass
-  rate <= 5% on session 1 out of fold predictions; writes `config/calibrator.json` (section 12.8)
-  and `docs/results/calibration_session1.png`.
-- Evaluate on session 2: run `run_trials.py` on session 2 with the calibrator loaded and the
-  chosen threshold, compute ECE (raw and calibrated), false pass, false rejection, accuracy of the
-  gated system; write `docs/reports/phase-7-calibration.md`.
-- C++ calibrator unit test: same features in, same probability out as sklearn within 1e-6 on 20
-  vectors exported by the training script.
+Scope is unchanged from v1 section 10 except as noted. Full prose: `docs/archive/PLAN-v1.md`
+section 10.
 
-DoD:
+- `ml/safenav_ml/gen_personas.py`: two disjoint command sets via the Mistral API from five non
+  expert personas. Session 1 is 5 x 40 = 200 (training), session 2 is 5 x 20 = 100 (evaluation).
+  No overlap with each other or the 500 benchmark, checked by normalized equality and fuzzy
+  threshold. Committed to `data/calibration/`.
+- `scripts/run_trials.py`: replays a command file through `/semantic_goal` with the gate
+  disabled in loopback mode, recording the section 12.9 run record. **Run with `backend:=http`
+  against the host Metal server**, which is what makes this phase fit in a morning.
+- `calibrator.py` (Python, not the v1 `calibrator.cpp`): loads `config/calibrator.json`,
+  computes the five section 12.8 features, outputs `calibrated_confidence`. Identity when the
+  file is absent. The v1 C++ versus sklearn parity test is replaced by a Python versus sklearn
+  test asserting agreement within 1e-6 on 20 exported vectors (D27).
+- `ml/safenav_ml/train_calibrator.py`: `StandardScaler` plus `LogisticRegression`, 5 fold leave
+  one persona out CV, ECE (10 equal width bins), Brier, reliability diagram, isotonic variant
+  for comparison only. Threshold is the lowest value achieving false pass <= 5% on session 1 out
+  of fold predictions. Writes `config/calibrator.json` and `docs/results/calibration_session1.png`.
+- Evaluate on session 2 with the calibrator loaded. Do not tune on session 2.
+- **New in v2:** compute and report **gated end-to-end accuracy on the 500 benchmark**, where a
+  correct abstention on an adversarial row counts as correct. This is the section 1 >= 0.85
+  target and the number the specification's metrics table wants. Report it beside the Phase 5
+  raw top-1 so the contribution of the gate is visible.
+- Keep the feature vector at the five of section 12.8. `n_relation_targets` from Phase 5 is an
+  obvious sixth feature; try it only as a reported variant, and do not change 12.8.
+
+### DoD
+
 - [ ] Session 1 and 2 files exist with 200 and 100 rows, disjoint from each other and the benchmark.
 - [ ] `train_calibrator.py` writes `config/calibrator.json`; CV ECE <= 0.10 recorded.
 - [ ] Session 2: false pass <= 5%, false rejection <= 15%, calibrated ECE reported (target <= 0.08;
       if not met, report and analyze, do not tune on session 2).
-- [ ] `semantic_cli` output now shows `calibrated_confidence != raw_confidence` and
-      `calibrator_loaded: true`.
-- [ ] C++ versus sklearn parity test passes.
+- [ ] Gated end-to-end accuracy on the 500 benchmark reported; target >= 0.85.
+- [ ] `semantic_cli` shows `calibrated_confidence != raw_confidence` and `calibrator_loaded: true`.
+- [ ] Python calibrator versus sklearn parity test passes.
 - [ ] Reliability diagram and metrics table committed. Report written, PR merged.
 
 Gate: calibrator deployed in the resolver; threshold fixed in `planner_params.yaml`.
 
-## 11. Phase 8: end to end validation and grammar ablation
+## 11. Phase 8: end to end validation, ablations, final results
 
-Goal: the 150 run simulation validation with bag logging, the grammar on versus off ablation,
-and the latency distribution.
+Goal: the 150 run validation, the grammar ablation, the model ablation, and the consolidated
+results document. Merges v1 Phases 8 and 9 (D31).
 
-Scope:
-- `scripts/run_trials.py` extended: `--suite e2e150` runs 10 rooms x 5 phrasing variants x 3
-  trials (variants drawn from the benchmark categories: direct, alias, spatial, functional,
-  abbreviation) with the full system (gate on), records a ros2 bag (mcap) per batch with
-  `/semantic_goal`, `/resolve_waypoint` request and response (logged via the resolver JSON log,
-  since services are not bagged), `/clarification_request`, `/cmd_vel`, `/odom`, `/tts_text`,
-  plus the JSONL record per run: command, resolved room, raw and calibrated confidence, pose,
-  nav outcome, time to navigation start, end to end latency.
-- Runs: 150 in loopback mode (mandatory) and 30 in Gazebo mode (10 rooms x 3 trials, mandatory)
-  with the same runner.
-- Ablation: the same 150 commands with `grammar_on:=false` (resolver restarted in free JSON mode,
-  gate on). Record out of graph rate, top-1, false pass.
-- Metrics script `ml/safenav_ml/e2e_report.py`: success rate, false start rate, time to navigation
-  start p50 and p90, end to end latency p50, p90, p99, resolver latency p50, p90, p99, out of graph
-  counts, tables and plots into `docs/results/`.
+- `scripts/run_trials.py --suite e2e150`: 10 rooms x 5 phrasing variants x 3 trials with the
+  full system, gate on, loopback. Variants drawn from the benchmark categories, and the set
+  must include `spatial` so the Phase 5 hop is exercised end to end. Records an mcap bag per
+  batch (`/semantic_goal`, `/clarification_request`, `/cmd_vel`, `/odom`, `/tts_text`; service
+  traffic comes from the resolver JSON log) plus the section 12.9 JSONL record per run.
+- Grammar ablation: the same 150 commands with `grammar_on:=false`. Record out of graph rate,
+  top-1, false pass. D24 applies: the expected rate is about 1%, not the 5% v1 assumed.
+- Gate ablation: the same 150 with threshold 0.0, giving the specification's Condition B versus
+  Condition C comparison.
+- Model ablation: production configuration on the 500 benchmark with Phi-3 mini Q4_K_M,
+  TinyLlama 1.1B Q4_K_M and Phi-3.5 mini Q4_K_M (top-1, top-3, out of graph, p50, p90, RSS).
+  The Phi-3.5 row may be reused from Phase 5. Optional cloud ceiling row if a key is present.
+- `ml/safenav_ml/e2e_report.py`: success rate, false start rate, time to navigation start p50
+  and p90, end to end latency p50/p90/p99, resolver latency p50/p90/p99, out of graph counts.
+  Tables and plots into `docs/results/`.
+- `docs/results/RESULTS.md`: every table from Phases 4, 5, 7, 8 with figures, the specification's
+  evaluation metrics table filled in, and an explicit limitations section naming the Gazebo gap
+  (D11, D30), the simulated rather than human calibration logs (D7), and the heuristic ranking
+  behind top-3 (D12).
+- `README.md`: architecture overview, quick start (Docker, build, launch, one `say` command),
+  package tour, results summary, limitations, how to run every experiment.
 
-DoD:
-- [ ] 150 loopback runs completed, `data/runs/e2e150_loopback.jsonl` has 150 rows, bag stored
-      (ignored by git, path recorded in the report).
-- [ ] 30 Gazebo runs completed and recorded.
-- [ ] Grammar on: 0 out of graph outputs over all 180 runs.
-- [ ] Grammar off: out of graph rate reported; expected >= 5% (if lower, report honestly and add
-      the adversarial 50 as a second ablation table).
-- [ ] Resolver p90 latency reported for container CPU and for host Metal proxy (section 13);
-      target < 3000 ms. If CPU misses, the report states both numbers and the mitigation used.
-- [ ] Task success rate and false start rate reported for gate on versus gate off (threshold 0.0)
-      on the same 150 commands (Condition B versus Condition C of the specification).
-- [ ] Report `docs/reports/phase-8-e2e-validation.md` with tables and figures. PR merged.
+### DoD
 
-Gate: core safety claim demonstrated in simulation.
+- [ ] 150 loopback runs completed, `data/runs/e2e150_loopback.jsonl` has 150 rows, bag path recorded.
+- [ ] Grammar on: 0 out of graph outputs across all runs.
+- [ ] Grammar off: out of graph rate reported as measured.
+- [ ] Gate on versus gate off task success and false start rates reported on the same 150 commands.
+- [ ] Resolver p90 reported for the Metal backend and the container CPU backend (section 13).
+- [ ] Model ablation table with at least three models, latency and memory columns.
+- [ ] `docs/results/RESULTS.md` complete; every number traceable to a JSONL or CSV in `data/`.
+- [ ] README quick start verified literally from a clean container.
+- [ ] Report written, PR merged.
+
+Gate: core safety claim demonstrated in simulation; results document complete.
 
 ## 12. Interface and data contracts (frozen after Phase 1)
 
@@ -604,6 +500,8 @@ bool calibrator_loaded
 string[] top_k_rooms           # ranking, best first, at most 5
 float32[] top_k_scores
 ```
+Unchanged in v2. The relational decomposition of Phase 5 is internal to the resolver: this
+service still returns one final `matched_room_name`.
 
 ### 12.3 AddRoom.srv
 ```
@@ -642,12 +540,26 @@ string[] known_rooms
 ```
 
 ### 12.6 GBNF grammar (generated from canonical names, sorted)
+
+**v2 form, revised in Phase 5 (D29).** The grammar is generated, not an interface, so this may
+change with a recorded deviation; 12.2 may not.
+
 ```
-root ::= "{" ws "\"room\"" ws ":" ws room-value "," ws "\"confidence\"" ws ":" ws confidence-value ws "}"
-room-value ::= "\"charging_dock\"" | "\"kitchen\"" | "\"server_room\"" | ... [ | "\"none\"" when allow_none ]
+root ::= "{" ws "\"room\"" ws ":" ws room-value ","
+         ws "\"relation\"" ws ":" ws relation-value ","
+         ws "\"confidence\"" ws ":" ws confidence-value ws "}"
+room-value     ::= "\"charging_dock\"" | "\"kitchen\"" | "\"server_room\"" | ... [ | "\"none\"" when allow_none ]
+relation-value ::= "\"none\"" | "\"left_of\"" | "\"right_of\"" | "\"adjacent\"" | "\"near\"" | "\"within\""
 confidence-value ::= [0-9] "." [0-9] [0-9]
 ws ::= [ \t\n]*
 ```
+
+Semantics: `relation == "none"` means `room` is the answer (v1 behaviour). Otherwise `room` is
+the anchor and the answer is the hop target computed by `relations.py` against `edges`, with
+abstention on zero or ambiguous targets. The output set stays closed either way.
+
+The v1 form is preserved in `docs/archive/PLAN-v1.md` section 12.6 and is what Phases 3 and 4
+measured.
 
 ### 12.7 room_annotations.json schema
 ```
@@ -664,6 +576,9 @@ ws ::= [ \t\n]*
 }
 ```
 Names: lowercase snake case, unique; aliases: lowercase, unique across the file; theta in radians.
+
+Phase 5 may add edges and fix `parent` values during the coverage audit (section 8.1). It may
+not rename or remove any canonical name, which has been frozen since Phase 1.
 
 ### 12.8 Calibration features and calibrator.json
 Feature vector, in this order:
@@ -683,6 +598,9 @@ Feature vector, in this order:
 ```
 `p = sigmoid(sum(w_i * (x_i - mean_i) / scale_i) + bias)`.
 
+Unchanged in v2. On a relational resolution, `edit_distance` is computed against the **final**
+room, not the anchor.
+
 ### 12.9 Run record (JSONL, one per trial)
 `run_id, timestamp, suite, sim_mode, command, intended_room, resolved_room, raw_confidence,
 calibrated_confidence, token_entropy, n_candidates, command_length, edit_distance, resolver_mode,
@@ -690,170 +608,209 @@ grammar_on, gate_threshold, bt_status, clarification_reason, nav_result, t_comma
 t_nav_start, t_nav_end, resolver_ms, e2e_ms, pose_x, pose_y, pose_theta, reached_intended,
 out_of_graph`
 
-## 13. Latency policy (CPU container versus hardware)
+Phase 5 appends `anchor_room, relation, n_relation_targets, backend` (recorded in D29/D27).
 
-Measured in Phase 0 with Phi-3 mini Q4_K_M (`llama-bench`, 8 threads):
+## 13. Latency policy (backends, container, hardware)
 
-| Where | Prompt eval | Generation | One resolution (about 80 prompt tokens, 15 output tokens, no prefix cache) |
-|-------|-------------|------------|-------|
-| Docker container on the M2 (CPU, arm64 VM) | 7.2 tok/s | 3.3 tok/s | 9 to 15 s |
-| Host macOS, Metal (llama-cpp-python) | about 56 tok/s | about 10 tok/s | 2 to 4.5 s (measured while the CPU was busy) |
-| Jetson Orin NX with CUDA (deployment, expected from the specification) | n/a | n/a | about 0.7 s |
+Measured in Phase 0 with Phi-3 mini Q4_K_M (`llama-bench`, 8 threads), and in Phase 3 with the
+real 900 to 1000 token production prompt:
 
-The container is therefore 5 to 10 times slower than the deployment target and cannot meet the
-p90 < 3000 ms target on its own. Rules:
-- Every latency table reports two columns: container CPU (rclcpp node, the real code path) and
-  host Metal proxy (`ml/safenav_ml/latency_probe.py` using llama-cpp-python with the identical
-  prompt, grammar, and token counts). The p90 < 3000 ms gate is judged on the Metal proxy, and
-  the container number is reported next to it with the explanation above.
-- Required mitigations in the resolver regardless of platform: prefix KV caching of the system
-  prompt (only the command tokens and the answer are evaluated per call), `n_threads` = all
-  cores, the production prompt with the fewest few shot examples that keep accuracy within 2
-  points of the best, `max_tokens` bounded by the grammar (the JSON answer is about 12 to 15
-  tokens; the grammar's optional whitespace lets the model emit the compact form).
-- Simulation configuration uses `timeout_ms: 20000` for the resolver service and the BT port
-  (`config/planner_params.yaml` sim profile), while the hardware profile keeps the
-  specification's 3000 ms. Batch runs (Phase 4 study on the host, Phases 7 and 8 in the
-  container) must budget about 10 s per LLM resolution in the container; fast path hits are
-  free.
-- Optional accelerator (Phase 5 stretch, only if batch runs are impractical): a `backend`
-  parameter on the resolver (`inprocess` default, `http` optional) that talks to a host side
-  `llama-server` (Metal) with the same grammar. The in process llama.cpp C API path stays the
-  reference implementation and the only one used for the reported architecture.
+| Where | One resolution, production prompt |
+|-------|-----------------------------------|
+| Docker container, CPU only, arm64 VM | tens of seconds to minutes (D16, D18) |
+| macOS host, Metal (llama-cpp-python or llama-server) | p50 2874 ms, p90 3678 ms (Phase 3) |
+| Jetson Orin NX, CUDA (expected, specification) | about 0.7 s |
+
+The container's CPU is 5 to 10 times slower than the deployment target and cannot meet p90 <
+3000 ms. v2 resolves this with the backend seam rather than by discounting the number:
+
+- **`backend: http` is the measured and deployed path.** In simulation the ROS node in the
+  container talks to a `llama-server` with Metal on the macOS host. On hardware the ROS node on
+  the Jetson talks to a `llama-server` with CUDA on localhost. Same code, same grammar, one URL
+  of difference. The p90 < 3000 ms gate is judged here.
+- **`backend: inprocess` stays the default for host unit tests** and remains a supported
+  configuration. The container CPU inprocess number is still reported in every latency table,
+  next to the backend number, with the explanation above. It is a property of an arm64 VM
+  without GPU passthrough, not of the design.
+- Localhost or host-loopback HTTP adds about 1 ms against a 2000 to 3000 ms resolution. Measure
+  it once in Phase 5 and report it rather than assuming it.
+- Required mitigations regardless of backend: prefix KV caching of the system prompt,
+  `n_threads` set to all cores, the fewest few shot examples that keep accuracy within 2 points
+  of the best (Phase 4 selected zero), and `max_tokens` bounded by the grammar.
+- Profiles in `config/planner_params.yaml`: the **sim** profile keeps `timeout_ms: 300000`
+  (D18) so a container CPU fallback cannot wedge a batch run; the **hardware** profile uses the
+  specification's `3000`. Phase 9 writes the hardware profile.
 - The fast path must resolve in under 5 ms and its hit rate on the benchmark is reported.
 
 ## 14. Recorded deviations from the specification
+
+D1 to D26 were recorded during Phases 0 to 4 and are unchanged. D27 to D31 are the v2 replan.
 
 - D1: Gazebo Fortress instead of Gazebo Harmonic. Reason: the official TurtleBot4 simulator pairs
   ROS 2 Humble with Fortress; Harmonic is only paired with Jazzy. Humble matches the Jetson.
 - D2: Benchmark and persona datasets are generated with the Mistral API (`ministral-14b-latest`,
   the largest model on the free tier; chosen over the Anthropic API on cost after Phase 3; see
-  `docs/phase-4-brief.md`) instead of the
-  GPT-4 API. Reported in the dataset card.
+  `docs/phase-4-brief.md`) instead of the GPT-4 API. Reported in the dataset card.
 - D3: `ResolveWaypoint.srv` response extended with entropy, timing, mode, ranking, and flags
   (section 12.2) so the calibration features and the ablation metrics come from the service itself.
 - D4: A `"none"` abstention value is allowed in the grammar (configurable, default on). The output
   is still closed set; `none` never maps to a pose and always yields FAILURE.
 - D5: A loopback simulator complements Gazebo for batch runs; the 150 run validation is executed
-  in loopback mode and a 30 run subset in Gazebo.
+  in loopback mode. (Superseded in part by D30: loopback is now the only mode.)
 - D6: The command string reaches the BT through a per goal rendered BT XML with the command as a
-  port literal, because `NavigateToPose` carries no string field. A custom navigator plugin with a
-  `SemanticNavigate.action` is an optional refinement (Phase 6 stretch).
+  port literal, because `NavigateToPose` carries no string field.
 - D7: Calibration in this build is trained on simulated persona logs, not human sessions. Human
   sessions and hardware are Phase 10.
-- D8: Phi-3.5 mini ablation model is Q4_K_M, not Q8 (disk budget). Cloud GPT-4o ceiling is
-  replaced by a Claude API ceiling row if an API key is available at Phase 9 time.
-- D9: `/semantic_markers` publishes one `TEXT_VIEW_FACING` marker per room (a name label at the
-  room pose), not the text-plus-arrow pair described in Phase 1's scope prose, so the marker
-  count matches the DoD assertion (`/semantic_markers` has N markers for N rooms) exactly. An
-  orientation arrow can be added in Phase 2 if useful for RViz review without changing this count.
+- D8: Phi-3.5 mini ablation model is Q4_K_M, not Q8 (disk budget). Cloud ceiling row replaced by
+  a Mistral API row (realized in Phase 4 as B4 and B4b).
+- D9: `/semantic_markers` publishes one `TEXT_VIEW_FACING` marker per room, not the text plus
+  arrow pair described in Phase 1's prose, so the marker count matches the DoD assertion exactly.
 - D10: TurtleBot4 Nav2 velocity limits in `safenav_sim/config/nav2_params.yaml` were raised from
-  the stock 0.26 m/s to 0.5 m/s (`FollowPath` and `velocity_smoother`) so the 10 room loopback
-  tour meets the Phase 2 five minute DoD target on the 20x14 m simulated facility. Simulation
-  only; the hardware nav2 profile in Phase 10 should use the real Create 3 speed limit.
-- D11: Gazebo Fortress could not be brought up with a spawned TurtleBot4 in the
-  `safenav-llm:humble` container: the world loads and is stable on its own, but robot spawn
-  (lidar/depth camera sensor creation) segfaults the Ignition Gazebo server in its software
-  (Ogre2/llvmpipe) renderer. See `docs/reports/phase-2-sim-world-nav2-bringup.md` for the crash
-  detail and a packaging bug found and fixed along the way (`turtlebot4_ignition_bringup`'s
-  `ignition.launch.py` silently drops the `world` argument through a broken `ros_ign_gazebo`
-  compatibility shim; `sim.launch.py` calls `ros_gz_sim`'s launch file directly instead). Per the
-  plan's own contingency, Gazebo was not pursued further this session; the loopback simulator is
-  the only working simulation mode until a future session revisits this, e.g. with GPU
-  passthrough.
-- D12: the Phase 3 resolver's room-level ranking/entropy do not use batched multi-sequence
-  scoring or a next-token grammar-masked distribution; both need `logits_all=True` in
-  llama-cpp-python, which made one resolution take minutes instead of seconds on the ~900 token
-  production prompt. `token_entropy` is the binary entropy of the model's own reported
-  confidence; `room_ranking` splits the remaining probability mass over other candidates by
-  inverse Levenshtein distance to the command. See `docs/reports/phase-3-llm-resolver-prototype.md`.
+  the stock 0.26 m/s to 0.5 m/s so the 10 room loopback tour meets the Phase 2 five minute DoD
+  target. Simulation only; the hardware profile uses the real Create 3 limit.
+- D11: Gazebo Fortress could not be brought up with a spawned TurtleBot4 in the container: the
+  world loads and is stable, but robot spawn (lidar and depth camera sensor creation) segfaults
+  the Ignition server in its software (Ogre2 on llvmpipe) renderer. See
+  `docs/reports/phase-2-sim-world-nav2-bringup.md`, which also documents a packaging bug found
+  and fixed in `turtlebot4_ignition_bringup`'s `ignition.launch.py`.
+- D12: the Phase 3 resolver's room level ranking and entropy do not use batched multi sequence
+  scoring or a next token grammar masked distribution; both need `logits_all=True` in
+  llama-cpp-python, which made one resolution take minutes on the 900 token production prompt.
+  `token_entropy` is the binary entropy of the model's reported confidence; `room_ranking`
+  splits the remaining mass by inverse Levenshtein distance. Top-3 figures inherit this.
 - D13: `llm_resolver_node_py` reads `room_annotations.json` directly instead of reconstructing
-  the graph from `/list_rooms`/`/get_room_pose`, because that service's flat alias list has no
-  per-room grouping and no edges, both needed for the prompt. No section 12 interface changed.
+  the graph from `/list_rooms` and `/get_room_pose`, because the flat alias list has no per room
+  grouping and no edges, both needed for the prompt. No section 12 interface changed.
 - D14: `ResolverCore` defaults to `n_gpu_layers=-1`; the ROS node overrides it to `0` for the
-  container image (no CUDA/Metal build there). Metal roughly 17-20x faster than CPU-only on the
-  production prompt once this was wired up correctly.
-- D15: the Phase 3 grammar-off ablation only produced an out-of-graph response at temperature
-  1.0; at 0.0 and 0.7 all 20 adversarial commands stayed in-graph even without the grammar,
-  because the system prompt lists every valid name explicitly. Documented as a real property of
-  this prompt/model pair, not a test bug.
-- D16: the Phase 3 DoD's 20-call container latency benchmark was reduced to 4-5 calls against an
-  already-warm resolver; the Metal proxy carries the full cold-to-warm 20-call series that the
-  p90 < 3000 ms gate is judged on (section 13).
-- D17: `ResolveResult` (Python-internal, not a section 12 interface) gained
-  `calibrated_confidence`, `calibrator_loaded`, `prompt_eval_tokens` beyond the nine fields
-  PLAN.md's Phase 3 scope names.
-- D18: the sim profile `timeout_ms` (`config/planner_params.yaml`, `resolver_only.launch.py`) is
-  300000 ms, not the 20000 section 13 names: that figure assumed roughly an 80 token prompt,
-  while the real 30-room production prompt is 900-1000 tokens and needs one to a few minutes cold
-  on the container's CPU-only llama.cpp.
-- D19: the Phase 4 24-condition prompt grid is screened on a deterministic stratified 64-pair
-  subsample (8 per category, seed 42) before the top-2 GBNF conditions run on the full 500;
-  see `docs/phase-4-brief.md` and `docs/reports/phase-4-prompt-study.md`.
-- D20-D23: baselines B0-B4b added beyond the original Phase 4 scope per Review 2 panel
-  feedback; the cloud ceiling row (D8) pulled forward from Phase 9; top-3 for LLM rows uses
-  the D12 heuristic ranking; study calls capped at `max_tokens=64`. Full detail in the phase 4
-  report.
-- D24: the grammar-off out-of-graph rate on the full 500 benchmark is 1.0 percent (5/500) at
-  the winning temperature, below the 5 percent this plan expected; reported as measured, not
-  tuned. The grammar's value is the structural 0 percent guarantee at essentially no latency
-  cost, not a fix for a frequent failure.
-- D25: the Phase 4 dataset's checker-flagged rows and stratified human-review sample
-  (`docs/phase-4-brief.md` section 4) were adjudicated by the session itself rather than a
-  separate human reviewer, since the phase ran as one continuous automated pipeline; the
-  adjudication reasoning (graph-edge validation for the spatial category, documented
-  parent/child ambiguity for multi_hop/functional) is recorded in
-  `data/benchmark/DATASET.md` and the phase report.
-- D26: Phase 4's 80 percent baseline top-1 gate (section 7) was **not met**: best full-500
-  top-1 is 0.662-0.664 after two documented prompt-template iterations (one made things
-  worse, one gave a small real improvement; see the phase report section 4.2). The shortfall
-  is concentrated in the `spatial`, `multi_hop`, and `adversarial` categories and looks like a
-  capability limit of Phi-3-mini-4k Q4_K_M at zero-shot on compositional/relational reasoning
-  rather than a prompt-wording problem; the phase report's section 12 lists mitigations for
-  later phases (Phase 7 calibration, Phase 9 model-size ablation). The phase otherwise meets
-  its DoD in full and was not held back from merging on this basis; see the report for the
-  full analysis.
+  container image. Metal is roughly 17 to 20 times faster than CPU only on the production prompt.
+- D15: the Phase 3 grammar off ablation only produced an out of graph response at temperature
+  1.0; at 0.0 and 0.7 all 20 adversarial commands stayed in graph even without the grammar,
+  because the system prompt lists every valid name explicitly.
+- D16: the Phase 3 DoD's 20 call container latency benchmark was reduced to 4 to 5 calls against
+  an already warm resolver; the Metal proxy carries the full series the p90 gate is judged on.
+- D17: `ResolveResult` (Python internal, not a section 12 interface) gained
+  `calibrated_confidence`, `calibrator_loaded`, `prompt_eval_tokens`.
+- D18: the sim profile `timeout_ms` is 300000 ms, not the 20000 v1 section 13 named, because the
+  real 30 room production prompt is 900 to 1000 tokens and needs one to a few minutes cold on
+  the container's CPU only llama.cpp.
+- D19: the Phase 4 24 condition prompt grid is screened on a deterministic stratified 64 pair
+  subsample (8 per category, seed 42) before the top 2 GBNF conditions run on the full 500.
+- D20 to D23: baselines B0 to B4b added beyond the original Phase 4 scope per Review 2 panel
+  feedback; the cloud ceiling row (D8) pulled forward; top-3 for LLM rows uses the D12 heuristic
+  ranking; study calls capped at `max_tokens=64`.
+- D24: the grammar off out of graph rate on the full 500 is 1.0 percent (5/500) at the winning
+  temperature, below the 5 percent v1 expected. Reported as measured, not tuned. The grammar's
+  value is the structural 0 percent guarantee at essentially no latency cost.
+- D25: the Phase 4 dataset's checker flagged rows and stratified human review sample were
+  adjudicated by the session itself rather than a separate human reviewer, since the phase ran
+  as one continuous automated pipeline. Reasoning recorded in `data/benchmark/DATASET.md`.
+- D26: Phase 4's 80 percent baseline top-1 gate was **not met**: best full 500 top-1 is 0.662 to
+  0.664 after two documented prompt template iterations. The shortfall is concentrated in
+  `spatial`, `multi_hop` and `adversarial`. v1 attributed this to a capability limit of
+  Phi-3-mini-4k Q4_K_M on compositional reasoning. **v2 Phase 5 is the response** (see D29).
+- **D27: v1's Phase 5 (C++ in-process llama.cpp resolver) is dropped.** The resolver stays in
+  Python behind the unchanged `/resolve_waypoint` service; the C++ in the package is the
+  annotation map node, the BT plugin and the semantic goal node. Reason: accuracy, not
+  implementation language, was the binding constraint on the remaining budget, and the BT plugin
+  rather than the resolver carries the "native Nav2 plugin" claim. The v1 C++ versus sklearn
+  calibrator parity test becomes a Python versus sklearn test. Full reasoning:
+  `docs/archive/superseded-decisions.md` S1.
+- **D28: `llama-server` over HTTP becomes the measured and deployed inference path**, with
+  in-process llama-cpp-python retained as the default for host unit tests. Reason: it is the
+  best supported CUDA path on the Jetson, it makes simulation and hardware the same shape, and
+  it takes the Phase 7 and 8 batch runs from 8 to 12 hours of container CPU to under an hour on
+  host Metal. Section 13 rewritten accordingly. Full reasoning: S2.
+- **D29: the GBNF grammar gains a `relation` field** (section 12.6 v2) so that spatial traversal
+  is performed in code against `edges` rather than by the model. Internal to the resolver;
+  section 12.2 unchanged. Motivated directly by the Phase 4 error analysis behind D26. Full
+  reasoning: S3.
+- **D30: the Gazebo DoD items are formally removed** from Phases 6 and 8 rather than carried as
+  permanently unmet, per D11. Loopback is the only simulation mode. The gap is named as a
+  limitation in `RESULTS.md` and GPU passthrough is listed in Phase 10. Full reasoning: S4.
+- **D31: v1 Phase 9 (model ablation and final report) is merged into v2 Phase 8**, and Phase 9
+  is reused for hardware readiness. Full reasoning and the renumbering table: S5.
 
-## 15. Phase 9: model size ablation, final evaluation report
+## 15. Phase 9: hardware readiness (no robot required)
 
-Goal: the ablation across model sizes and the consolidated results document.
+Goal: make Jetson Orin NX deployment a verified-feasible path rather than an assumption, using
+only what can be checked without the physical robot. This phase writes and reviews; Phase 10
+executes.
+
+The guiding question for every item: *when the hardware arrives, what could still surprise us?*
+Anything that can be answered now gets answered now.
 
 Scope:
-- `prompt_study.py --models` runs the production prompt configuration with Phi-3 mini Q4_K_M,
-  TinyLlama 1.1B Q4_K_M, Phi-3.5 mini Q4_K_M on the 500 benchmark (top-1, top-3, OOG, p50, p90,
-  RSS memory); optional cloud API ceiling row (`--ceiling mistral`) if the key is present.
-- `docs/results/RESULTS.md`: all tables from Phases 4, 7, 8, 9 with figures; the evaluation
-  metrics table of the specification filled in; honest gaps for hardware only items.
-- README.md: architecture overview (the mermaid diagrams from `docs/reference`), quick start
-  (Docker, launch, `say` command), package tour, results summary, limitations, and how to run
-  every experiment.
-- Final cleanup of `docs/PLAN.md` statuses.
 
-DoD:
-- [ ] Ablation table with at least three models committed with latency and memory columns.
-- [ ] `docs/results/RESULTS.md` complete; every number traceable to a JSONL or CSV in `data/`.
-- [ ] README quick start verified from a clean container (`docker compose up`, build, launch,
-      one `say` command) by following it literally.
-- [ ] All phase rows in the status table marked `[x]` with issue and PR numbers.
-- [ ] PR merged.
+- `docker/Dockerfile.jetson`: ROS 2 Humble on JetPack (`dustynv/ros:humble-*` or an l4t base),
+  `llama.cpp` tag b10941 built with `-DGGML_CUDA=ON` producing `llama-server`, the workspace
+  built with `colcon`. Written, lint-checked, and reviewed line by line against the known arm64
+  and CUDA pitfalls. **Not built in this phase** (no Jetson present); Phase 10 builds it and
+  records what had to change.
+- `docs/hardware/jetson-build.md`: the build recipe with the exact CUDA architecture flag for
+  Orin NX (`sm_87`), expected build time, disk requirements, and the three failure modes most
+  likely to appear, each with its remedy.
+- `config/planner_params.yaml` hardware profile: `timeout_ms: 3000` (specification value, not
+  the sim 300000 of D18), `backend: http`, `backend_url: http://127.0.0.1:8080`, `n_threads`
+  for the Orin, the Phase 7 threshold, and the production model path. The sim profile stays as
+  is. A unit test asserts both profiles load and validate.
+- `safenav_sim/config/nav2_params.yaml` hardware variant: Create 3 velocity limits restored to
+  0.26 m/s, reversing D10 for hardware only, with a test asserting the sim and hardware values
+  differ as intended.
+- `docs/hardware/bringup-checklist.md`: every seam between the simulation build and the robot,
+  each with the evidence that it already works and what specifically must be re-verified on
+  hardware. At minimum: model load and CUDA offload, grammar identity across backends, the
+  `/resolve_waypoint` contract, the BT plugin load path in `bt_navigator`, the annotation graph
+  and its poses against a fresh SLAM map, TF frames, the calibrator file, and `/tts_text`.
+- `docs/hardware/cannot-verify.md`: an explicit, honest list of what no amount of simulation
+  work can de-risk, so Phase 10 budgets for it. Expected entries: real sensor noise into AMCL,
+  Create 3 docking behaviour, thermal throttling of the Orin under sustained inference, real
+  human phrasing versus persona-generated phrasing (D7), and audio hardware for TTS.
+- A short section in `RESULTS.md` recording which hardware claims are verified, which are
+  argued, and which are untested.
 
-## 16. Phase 10: hardware deployment (deferred)
+### DoD
 
-Not part of the current build. Listed so that the simulation work leaves the right seams:
-Jetson Orin NX CUDA build of llama.cpp (`-DGGML_CUDA=ON`), TurtleBot4 Standard bringup, fresh
-SLAM map per session week, `annotate_map.py` with RViz clicks, session 1 and 2 human trials
-(5 participants, 200 and 100 trials), calibrator retrained on real logs, hardware latency
-profile, three condition study, paper and patent drafts. Everything above must run unchanged
-except `model_path`, `n_threads`, the map, and the annotation file.
+- [ ] `Dockerfile.jetson` committed and reviewed; the review notes in the report say what was
+      checked and what remains unknown until it is built.
+- [ ] `docs/hardware/jetson-build.md`, `bringup-checklist.md`, `cannot-verify.md` committed.
+- [ ] Hardware and sim profiles both present in `config/planner_params.yaml`, both load and
+      validate in a unit test, and differ only in the documented fields.
+- [ ] Nav2 hardware velocity variant committed with its test.
+- [ ] Every entry in the bring-up checklist cites either a simulation result (with the report
+      and section) or is listed in `cannot-verify.md`. No entry is left unsourced.
+- [ ] Report written, PR merged.
 
-## 17. Session checklist for Sonnet
+Gate: a competent engineer with the robot in front of them could follow `bringup-checklist.md`
+without reading this plan.
 
-1. `git checkout main && git pull`, read the previous phase report in `docs/reports/`.
-2. Start Docker: `docker compose -f docker/docker-compose.yml up -d` and open a shell with
-   `exec dev bash`. Build with `colcon build --symlink-install` (first build of the workspace
-   takes a few minutes).
-3. Create the issue, the branch, then work through the scope in order. Keep a running list of
+## 16. Phase 10: hardware bring-up (deferred until hardware is present)
+
+Not part of the 4 to 5 day budget. Run when the Jetson Orin NX and TurtleBot4 Standard are
+available.
+
+Build `Dockerfile.jetson` on the Orin and record the delta from the Phase 9 recipe. TurtleBot4
+Standard bringup. Fresh SLAM map of the real space, `annotate_map.py` with RViz clicks to
+rebuild `room_annotations.json` against it, including the `edges` the Phase 5 decomposition
+depends on. Hardware latency profile with CUDA, compared against the section 13 expectation of
+about 0.7 s. Human session 1 and 2 trials (5 participants, 200 and 100 trials), calibrator
+retrained on real logs, and the three condition study. Optionally revisit Gazebo with GPU
+passthrough to close the D11 and D30 gap. Paper and patent drafts.
+
+Everything above must run unchanged except `model_path`, `n_threads`, `backend_url`, the map,
+and the annotation file.
+
+## 17. Session checklist
+
+1. `git checkout main && git pull`, read the previous phase report in `docs/reports/`. If the
+   phase is 5 or later, also read `docs/archive/superseded-decisions.md` once.
+2. Start the host inference server if the phase needs it:
+   `llama-server -m models/phi3-mini-4k-instruct.Q4_K_M.gguf -ngl -1 --port 8080 --host 0.0.0.0`
+   (see `docs/hardware/llama-server.md` after Phase 5 writes it).
+3. Start Docker: `docker compose -f docker/docker-compose.yml up -d`, then `exec dev bash`.
+   Build with `colcon build --symlink-install` from `/ws/ros2_ws`.
+4. Create the issue, the branch, then work through the scope in order. Keep a running list of
    DoD items with evidence (command plus output snippet) for the report.
-4. Run every DoD command yourself. Do not tick an item you did not run.
-5. Write the report, update the status table, commit, push, PR, merge, delete the branch.
-6. Summarize for the user: what was built, numbers, deviations, what the next session starts with.
+5. Run every DoD command yourself. Do not tick an item you did not run.
+6. Write the report, update the status table, commit, push, PR, merge, delete the branch.
+7. Summarize for the user: what was built, numbers, deviations, what the next session starts with.
+8. Do not start the next phase in the same session unless asked.
