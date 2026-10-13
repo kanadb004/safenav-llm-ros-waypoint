@@ -148,6 +148,14 @@ class LlmResolverNode(Node):
             response.reasoning = "timeout"
             response.resolver_mode = "llm_grammar" if grammar_on else "llm_free"
             return response
+        except Exception as exc:
+            # A backend (e.g. llama-server) error must not take the whole node down; this was
+            # observed directly in phase 5 testing (concurrent slot contention returning a 500).
+            self.get_logger().error(f"resolve failed: {exc}")
+            response.success = False
+            response.reasoning = f"backend_error: {exc}"
+            response.resolver_mode = "llm_grammar" if grammar_on else "llm_free"
+            return response
 
         response.matched_room_name = result.room
         response.raw_confidence = result.raw_confidence

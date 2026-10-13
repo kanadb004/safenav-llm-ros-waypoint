@@ -14,6 +14,8 @@ ARGUMENTS = [
     DeclareLaunchArgument("timeout_ms", default_value="300000"),
     DeclareLaunchArgument("fewshot_count", default_value="5"),
     DeclareLaunchArgument("n_threads", default_value="8"),
+    DeclareLaunchArgument("backend", default_value="inprocess"),
+    DeclareLaunchArgument("backend_url", default_value="http://host.docker.internal:8080"),
 ]
 
 
@@ -41,6 +43,8 @@ def generate_launch_description():
             "timeout_ms": LaunchConfiguration("timeout_ms"),
             "fewshot_count": LaunchConfiguration("fewshot_count"),
             "n_threads": LaunchConfiguration("n_threads"),
+            "backend": LaunchConfiguration("backend"),
+            "backend_url": LaunchConfiguration("backend_url"),
         }],
     )
 

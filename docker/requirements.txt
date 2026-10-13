@@ -13,3 +13,4 @@ jsonschema
 anthropic
 tqdm
 pyyaml
+requests
