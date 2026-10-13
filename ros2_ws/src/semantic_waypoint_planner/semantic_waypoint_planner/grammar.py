@@ -17,6 +17,32 @@ def _json_escape(name: str) -> str:
     return name.replace("\\", "\\\\").replace('"', '\\"')
 
 
+def build_grammar_v1(canonical_names: Iterable[str], allow_none: bool = True) -> str:
+    """Build the v1, single-field GBNF grammar (``{"room", "confidence"}``, no ``relation``).
+
+    Phase 5A (D38) re-introduces this path: cue-free commands are resolved against it with
+    the hop suppressed, both because a command with no relational cue never needed the hop
+    and because this smaller grammar is the latency fix (Phase 5 section 6 traced the p90
+    regression to v2's larger alternation). This is the literal pre-Phase-5 grammar, kept
+    alongside ``build_grammar`` rather than replacing it (section 8A.5, preserve not replace).
+    """
+    names = sorted(set(canonical_names))
+    if not names:
+        raise ValueError("canonical_names must not be empty")
+
+    literals: List[str] = [f'"\\"{_json_escape(n)}\\""' for n in names]
+    if allow_none:
+        literals.append('"\\"none\\""')
+
+    return (
+        'root ::= "{" ws "\\"room\\"" ws ":" ws room-value "," ws "\\"confidence\\"" ws ":" '
+        'ws confidence-value ws "}"\n'
+        f"room-value ::= {' | '.join(literals)}\n"
+        'confidence-value ::= [0-9] "." [0-9] [0-9]\n'
+        'ws ::= [ \\t\\n]*\n'
+    )
+
+
 def build_grammar(canonical_names: Iterable[str], allow_none: bool = True) -> str:
     """Build the GBNF grammar string of PLAN.md section 12.6 (v2, D29).
 
