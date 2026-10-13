@@ -10,6 +10,7 @@ without a restart.
 """
 
 import concurrent.futures
+import json
 import os
 import threading
 import time
@@ -145,7 +146,10 @@ class LlmResolverNode(Node):
         response.matched_room_name = result.room
         response.raw_confidence = result.raw_confidence
         response.calibrated_confidence = result.calibrated_confidence
-        response.reasoning = result.reasoning
+        # ResolveWaypoint.srv (12.2) is frozen, so the phase 5 hop fields ride in the existing
+        # free-text "reasoning" field rather than as new response fields (deviation, see the
+        # phase 5 report). Empty when relation is "none", so v1 callers see no change.
+        response.reasoning = self._encode_reasoning(result)
         response.token_entropy = result.token_entropy
         response.inference_ms = result.latency_ms
         response.resolver_mode = result.mode
@@ -166,6 +170,17 @@ class LlmResolverNode(Node):
             response.success = False
 
         return response
+
+    @staticmethod
+    def _encode_reasoning(result) -> str:
+        payload = {}
+        if result.reasoning:
+            payload["raw"] = result.reasoning
+        if result.relation != "none":
+            payload["anchor_room"] = result.anchor_room
+            payload["relation"] = result.relation
+            payload["n_relation_targets"] = result.n_relation_targets
+        return json.dumps(payload) if payload else ""
 
     def _get_room_pose(self, name: str):
         # Polled rather than rclpy.spin_until_future_complete(self, ...): this runs inside a
