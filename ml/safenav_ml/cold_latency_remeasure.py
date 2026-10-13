@@ -15,6 +15,8 @@ import os
 import sys
 import time
 
+import requests
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ROS2_PY_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
@@ -49,26 +51,27 @@ def percentile(values, q):
     return values[lo] * (1 - frac) + values[hi] * frac
 
 
-def measure_path(core, commands, grammar_str, n, label):
+def measure_path(core, backend_url, commands, grammar_str, n, label):
     latencies = []
     per_token = []
     for command in commands[:n]:
         prompt = core.prompt_builder.build_prompt(command)
+        payload = {
+            "prompt": prompt, "n_predict": core.max_tokens, "temperature": core.temperature,
+            "cache_prompt": True, "grammar": grammar_str, "stop": ["<|end|>"],
+        }
         start = time.monotonic()
-        text, backend_ms, prompt_eval_tokens = core._backend.complete(
-            prompt, grammar_str, max_tokens=core.max_tokens, temperature=core.temperature,
-            stop=["<|end|>"],
-        )
+        response = requests.post(f"{backend_url}/completion", json=payload, timeout=120.0)
         elapsed_ms = (time.monotonic() - start) * 1000.0
+        response.raise_for_status()
+        data = response.json()
         latencies.append(elapsed_ms)
-        # Re-query the server's own timings for predicted_per_token_ms via a second, tiny
-        # same-prompt call would double the cost; instead approximate from predicted tokens
-        # in the text (JSON answers are short and this is diagnostic, not the gate itself).
-        n_tokens = max(1, len(text) // 4)
-        per_token.append(elapsed_ms / n_tokens)
+        # The server's own timings, not a text-length guess: exact predicted token count and
+        # per-token decode cost, which is what confirms or refutes the grammar-size hypothesis.
+        per_token.append(data["timings"]["predicted_per_token_ms"])
     print(f"{label}: n={len(latencies)} p50={percentile(latencies, 0.50):.1f} "
           f"p90={percentile(latencies, 0.90):.1f} p99={percentile(latencies, 0.99):.1f} "
-          f"mean_per_token_ms~={sum(per_token) / len(per_token):.1f}")
+          f"predicted_per_token_ms mean={sum(per_token) / len(per_token):.1f}")
     return latencies
 
 
@@ -90,8 +93,8 @@ def main():
     cues = load_cues()
     cue_rate = sum(1 for c in commands if has_relational_cue(c, cues)) / len(commands)
 
-    v1_latencies = measure_path(core, commands, core.grammar_str_v1, args.n, "v1 grammar path")
-    v2_latencies = measure_path(core, commands, core.grammar_str, args.n, "v2 grammar path")
+    v1_latencies = measure_path(core, args.backend_url, commands, core.grammar_str_v1, args.n, "v1 grammar path")
+    v2_latencies = measure_path(core, args.backend_url, commands, core.grammar_str, args.n, "v2 grammar path")
 
     weighted = ([percentile(v1_latencies, 0.90)] * round((1 - cue_rate) * 100)
                 + [percentile(v2_latencies, 0.90)] * round(cue_rate * 100))
