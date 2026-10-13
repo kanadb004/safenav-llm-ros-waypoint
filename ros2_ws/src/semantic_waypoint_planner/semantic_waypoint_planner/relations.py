@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from typing import Optional, Tuple
 
-from .graph import AnnotationGraph
+from .graph import INVERSE_RELATIONS, AnnotationGraph
 
 RELATIONS = ("none", "left_of", "right_of", "adjacent", "near", "within")
 
@@ -58,7 +58,14 @@ def resolve_relation(
     if relation not in RELATIONS:
         return None, 0
 
-    targets = graph.related_rooms(anchor, relation)
+    # "room is left_of/right_of" describes the user's intent as a direction relative to the
+    # anchor ("the room to the left of the kitchen"), i.e. the target satisfies
+    # target <relation> anchor, not anchor <relation> target. An edge (A, B, "left_of") in
+    # room_annotations.json means "A is left_of B" (12.7), so finding the target requires the
+    # query to pivot through the inverse relation: "the thing left_of kitchen" is whatever
+    # kitchen is right_of. Symmetric relations (adjacent/near) and "within" need no such flip.
+    query_relation = INVERSE_RELATIONS.get(relation, relation)
+    targets = graph.related_rooms(anchor, query_relation)
     if not targets:
         return None, 0
     if len(targets) == 1:

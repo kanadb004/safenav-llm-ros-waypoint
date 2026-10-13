@@ -55,9 +55,19 @@ def test_adjacent_single_target_resolves(shipped_graph):
     assert name in shipped_graph.related_rooms("charging_dock", "adjacent")
 
 
-def test_left_of_uses_materialized_inverse(shipped_graph):
-    name, n = resolve_relation(shipped_graph, "storage_room", "right_of", "whatever")
-    assert name == "charging_dock"
+def test_left_of_means_target_is_left_of_anchor(shipped_graph):
+    # "the room to the left of the kitchen" -> {"room": "kitchen", "relation": "left_of"}.
+    # reception (x=1) is to the left of kitchen (x=6); the authored fact is the inverse,
+    # "kitchen right_of reception", so this also exercises the query-side relation flip.
+    name, n = resolve_relation(shipped_graph, "kitchen", "left_of", "go to the room on the left")
+    assert name == "reception"
+    assert n == 1
+
+
+def test_right_of_means_target_is_right_of_anchor(shipped_graph):
+    # storage_room (x=10.5) is to the right of charging_dock (x=6).
+    name, n = resolve_relation(shipped_graph, "charging_dock", "right_of", "whatever")
+    assert name == "storage_room"
     assert n == 1
 
 
