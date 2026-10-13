@@ -44,8 +44,17 @@ private:
   struct Resolution
   {
     std::string resolved_room;
+    std::string attempted_room;
     double raw_confidence{0.0};
     double calibrated_confidence{0.0};
+    std::string resolver_mode;
+    bool out_of_graph{false};
+    double token_entropy{0.0};
+    std::string reasoning;
+    bool success{false};
+    bool gate_passed{false};
+    double threshold_used{0.0};
+    bool received{false};
   };
 
   void handle_semantic_goal(const msg::SemanticGoal::SharedPtr goal_msg);
@@ -56,8 +65,8 @@ private:
     const std::string & command, double confidence_threshold, int timeout_ms) const;
   static std::string xml_escape(const std::string & text);
   void publish_result(
-    const std::string & command, const std::string & resolved_room, double raw_confidence,
-    double calibrated_confidence, const std::string & nav_result, double e2e_ms) const;
+    const std::string & command, const Resolution & resolution,
+    const std::string & nav_result, double e2e_ms) const;
 
   std::string bt_template_;
   std::string runs_dir_;
