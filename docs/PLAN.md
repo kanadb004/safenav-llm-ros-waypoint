@@ -23,7 +23,7 @@ Status legend: `[ ]` not started, `[~]` in progress, `[x]` merged to main.
 | 4 | Synthetic benchmark and prompt sensitivity study | [x] | #14 | #15 |
 | 5 | Relational decomposition and resolver backend | [x] | #16 | #17 |
 | 5A | Corrective: cue gating, benchmark re-audit, latency re-measure | [x] | #18 | #19 |
-| 6 | BT plugin, semantic goal node, end to end in sim | [ ] | | |
+| 6 | BT plugin, semantic goal node, end to end in sim | [x] | #20 | #21 |
 | 7 | Confidence calibration pipeline | [ ] | | |
 | 8 | E2E validation, ablations, final results | [ ] | | |
 | 9 | Hardware readiness (no robot required) | [ ] | | |
@@ -609,21 +609,26 @@ section 9 for the full original prose.
 
 ### DoD
 
-- [ ] `ros2 param get /bt_navigator plugin_lib_names` includes `semantic_waypoint_planner`,
-      no plugin load error in the log.
-- [ ] `say "go to the kitchen"` reaches the kitchen pose (distance < 0.5 m),
+- [x] `ros2 param get /bt_navigator plugin_lib_names` includes `semantic_waypoint_planner`,
+      no plugin load error in the log. (Actual library name is `semantic_waypoint_planner_bt_node`.)
+- [x] `say "go to the kitchen"` reaches the kitchen pose (distance < 0.5 m),
       `/semantic_goal_result` shows `nav_result: succeeded`.
-- [ ] A relational command (`say "the room to the left of the kitchen"`) navigates to the
+- [x] A relational command (`say "the room to the left of the kitchen"`) navigates to the
       correct room end to end, exercising the Phase 5 hop through the full stack.
-- [ ] `say "go to the cafeteria"` yields FAILURE, a `ClarificationRequest`, a `/tts_text`
-      message listing rooms, and `/cmd_vel` stays zero.
-- [ ] Timeout path: resolver stopped, `say` returns within `timeout_ms + 500 ms` with
+- [x] An unresolved command yields FAILURE, a `ClarificationRequest`, a `/tts_text`
+      message listing rooms, and `/cmd_vel` stays zero. ("go to the cafeteria" turned out to
+      resolve validly via an alias in this annotation graph; "take me to the zebra enclosure"
+      used instead, see report section 3.3.)
+- [x] Timeout path: resolver stopped, `say` returns within `timeout_ms + 500 ms` with
       `reason: timeout`, robot does not move.
-- [ ] No `bt_loop_duration` warnings beyond the resolution tick.
-- [ ] Launch test covering success, low confidence, and timeout paths.
-- [ ] Report written, PR merged.
+- [x] No `bt_loop_duration` warnings beyond the resolution tick.
+- [x] Launch test covering success, low confidence, and timeout paths.
+- [x] Report written, PR merged.
 
 Gate: end to end command to navigation works in loopback with fallback behaviours.
+
+**Outcome: merged (#21), all DoD items met.** Report: `docs/reports/phase-6-bt-plugin-e2e.md`.
+Deviations D46 to D48.
 
 ## 10. Phase 7: confidence calibration pipeline
 
@@ -1071,6 +1076,22 @@ D40 to D44 were recorded during Phase 5A; see `docs/reports/phase-5a-corrective.
   Recorded after Phase 5A merged (#19); the report carries an amendment note to the same effect.
   The latency finding is unaffected and remains a real miss: 3737 ms traffic-weighted p90 cold
   against a 3000 ms gate taken from the specification, not set by judgment.
+- **D46: `/semantic_resolution_result`, a new `std_msgs/String` JSON topic, not a section 12
+  interface.** `NavigateToPose`'s result carries only `std_msgs/Empty`, so `semantic_goal_node`
+  has no path back to the resolved room or confidence through the action itself.
+  `SemanticNavigateToPose` publishes this side channel on success; `semantic_goal_node` caches
+  it keyed by command text and merges it into `/semantic_goal_result`. Not safe for two
+  concurrent goals sharing identical command text; out of scope for Phase 6 (one goal at a
+  time). Phase 6 report section 2.
+- **D47: `espeak-ng` subprocess and `/cmd_lightring` pattern not built.** Named optional in the
+  plan's section 9 scope ("only add them if the phase is running ahead"); this phase was not
+  ahead. `/tts_text` alone satisfies every Phase 6 DoD item.
+- **D48: the `semantic_nav` lifecycle manager runs with `bond_timeout: 0.0`.**
+  `semantic_goal_node` extends `rclcpp_lifecycle::LifecycleNode` directly, not
+  `nav2_util::LifecycleNode`, so it does not implement the bond protocol that `map_server` and
+  `bt_navigator` do; the first launch attempt failed lifecycle bring-up after a 4 s bond
+  timeout before this was set. Disables the bond watchdog for the whole manager rather than
+  mixing bonded and unbonded nodes under one `bond_timeout`.
 
 ## 15. Phase 9: hardware readiness (no robot required)
 
