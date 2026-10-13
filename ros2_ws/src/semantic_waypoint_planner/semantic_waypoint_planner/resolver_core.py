@@ -12,15 +12,11 @@ import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
+from .backends import Backend, build_backend
 from .grammar import RELATION_VALUES, build_grammar
 from .graph import AnnotationGraph
 from .prompt import DEFAULT_FEWSHOT_PATH, DEFAULT_TEMPLATE_PATH, PromptBuilder
 from .relations import resolve_relation
-
-try:
-    import llama_cpp
-except ImportError:  # pragma: no cover - exercised only when llama_cpp is absent
-    llama_cpp = None
 
 VERB_PHRASES = ["go to", "navigate to", "head to", "take me to", "move to"]
 _WS_RE = re.compile(r"\s+")
@@ -170,9 +166,9 @@ class ResolverCore:
         allow_none: bool = True,
         calibrator_path: Optional[str] = None,
         n_gpu_layers: int = -1,
+        backend: str = "inprocess",
+        backend_url: str = "http://host.docker.internal:8080",
     ):
-        if llama_cpp is None:
-            raise ImportError("llama_cpp is required to construct a ResolverCore")
         self.n_ctx = n_ctx
         self.n_threads = n_threads
         self.temperature = temperature
@@ -183,13 +179,15 @@ class ResolverCore:
         self.allow_none = allow_none
         self.calibrator = Calibrator(calibrator_path)
         self.last_prefix_tokens = 0
+        self.backend_name = backend
 
-        self._llm = llama_cpp.Llama(
-            model_path=model_path,
+        self._backend: Backend = build_backend(
+            backend,
+            model_path,
             n_ctx=n_ctx,
             n_threads=n_threads,
             n_gpu_layers=n_gpu_layers,
-            verbose=False,
+            backend_url=backend_url,
         )
         self.set_graph(graph)
 
@@ -201,8 +199,7 @@ class ResolverCore:
             graph, self.prompt_template, self.fewshot_path, self.fewshot_count
         )
         self._grammar_str = build_grammar(graph.canonical_names, allow_none=self.allow_none)
-        self._grammar = llama_cpp.LlamaGrammar.from_string(self._grammar_str)
-        self._llm.reset()
+        self._backend.reset()
 
     @property
     def grammar_str(self) -> str:
@@ -247,21 +244,16 @@ class ResolverCore:
         max_tokens: Optional[int] = None,
     ) -> ResolveResult:
         prompt = self.prompt_builder.build_prompt(command)
-        kwargs = dict(
-            prompt=prompt,
+        raw_text, _backend_ms, prompt_eval_tokens = self._backend.complete(
+            prompt,
+            self._grammar_str if grammar_on else None,
             max_tokens=max_tokens if max_tokens is not None else self.max_tokens,
             temperature=self.temperature,
             stop=["<|end|>"],
         )
-        if grammar_on:
-            kwargs["grammar"] = self._grammar
-
-        completion = self._llm.create_completion(**kwargs)
         latency_ms = (time.monotonic() - start) * 1000.0
-        self.last_prefix_tokens = getattr(self._llm, "n_tokens", 0)
+        self.last_prefix_tokens = prompt_eval_tokens
 
-        choice = completion["choices"][0]
-        raw_text = choice["text"]
         mode = "llm_grammar" if grammar_on else "llm_free"
 
         anchor, relation, raw_confidence = self._parse_answer(raw_text)
@@ -298,7 +290,7 @@ class ResolverCore:
             mode=mode,
             out_of_graph=out_of_graph,
             raw_text=raw_text,
-            prompt_eval_tokens=completion.get("usage", {}).get("prompt_tokens", 0),
+            prompt_eval_tokens=prompt_eval_tokens,
             anchor_room=anchor_room,
             relation=relation,
             n_relation_targets=n_relation_targets,

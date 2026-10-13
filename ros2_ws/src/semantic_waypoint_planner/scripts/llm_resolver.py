@@ -49,6 +49,10 @@ class LlmResolverNode(Node):
         # The container image has no CUDA/Metal build of llama.cpp (CPU only per CLAUDE.md); the
         # ResolverCore default of -1 (offload all layers) is for host tooling with Metal.
         self.declare_parameter("n_gpu_layers", 0)
+        # D27/D28: inprocess is llama-cpp-python in this process; http is llama-server reached
+        # over HTTP, the shape used for batch runs against the host Metal server and on Jetson.
+        self.declare_parameter("backend", "inprocess")
+        self.declare_parameter("backend_url", "http://host.docker.internal:8080")
 
         annotations_path = self.get_parameter("annotations_path").value
         model_path = self._resolve_model_path(self.get_parameter("model_path").value)
@@ -76,6 +80,8 @@ class LlmResolverNode(Node):
             allow_none=self.get_parameter("allow_none").value,
             calibrator_path=calibrator_path,
             n_gpu_layers=self.get_parameter("n_gpu_layers").value,
+            backend=self.get_parameter("backend").value,
+            backend_url=self.get_parameter("backend_url").value,
         )
         self.get_logger().info("model loaded")
 
