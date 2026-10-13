@@ -10,3 +10,11 @@ llm_resolver_node_py:
     fewshot_count: 0
     prompt_template: "system_template.txt"
     allow_none: true
+
+semantic_goal_node:
+  ros__parameters:
+    # Bounded wait SemanticNavigateToPose puts on /resolve_waypoint (section 9 scope). The sim
+    # profile keeps this generous for the same reason section 13's sim timeout_ms is 300000:
+    # a container CPU fallback must not wedge a batch run. Lower this for a hardware profile
+    # once Phase 9/10 defines one.
+    default_timeout_ms: 300000
