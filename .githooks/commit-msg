@@ -1,18 +1,45 @@
 #!/bin/sh
 # Rejects commit messages that violate CLAUDE.md git conventions:
-# no AI attribution trailers, no em or en dashes, subject at most 60 characters.
+# no AI attribution trailers or links, no em or en dashes, subject at most 60 characters.
+#
+# Deliberately narrow: it matches attribution forms, not the word "claude" itself,
+# so legitimate subjects such as "chore: gitignore .claude directory" still pass.
 msg="$1"
-if grep -q -i -E '^(Co-Authored-By|Claude-Session):|Generated with \[?Claude' "$msg"; then
-  echo "commit-msg: AI attribution lines are not allowed (see CLAUDE.md)" >&2
+
+if grep -q -i -E '^[[:space:]]*(Co-Authored-By|Co-Authored|Claude-Session|Assisted-By|Generated-By|AI-Assisted-By)[[:space:]]*:' "$msg"; then
+  echo "commit-msg: AI attribution trailer is not allowed (see CLAUDE.md)" >&2
   exit 1
 fi
+
+if grep -q -i -E 'claude\.ai/(code|chat|share)' "$msg"; then
+  echo "commit-msg: claude.ai session link is not allowed (see CLAUDE.md)" >&2
+  exit 1
+fi
+
+if grep -q -i -E 'generated with[[:space:]]+\[?(claude|anthropic)' "$msg"; then
+  echo "commit-msg: 'Generated with Claude' line is not allowed (see CLAUDE.md)" >&2
+  exit 1
+fi
+
+if grep -q -i -E '@anthropic\.com' "$msg"; then
+  echo "commit-msg: anthropic.com address is not allowed in a commit message" >&2
+  exit 1
+fi
+
+if grep -q '🤖' "$msg"; then
+  echo "commit-msg: robot emoji attribution is not allowed (see CLAUDE.md)" >&2
+  exit 1
+fi
+
 if grep -q -E $'—|–' "$msg"; then
   echo "commit-msg: em or en dash found; use a comma, colon, or hyphen" >&2
   exit 1
 fi
+
 subject=$(grep -v '^#' "$msg" | sed -n '1p')
 if [ "${#subject}" -gt 60 ]; then
   echo "commit-msg: subject longer than 60 characters" >&2
   exit 1
 fi
+
 exit 0

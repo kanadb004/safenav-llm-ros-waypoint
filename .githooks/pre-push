@@ -1,0 +1,51 @@
+#!/bin/sh
+# Last gate before anything leaves the machine. The commit-msg hook can be bypassed
+# (--no-verify, an amend made elsewhere, a rebase that replays an old message), so the
+# same checks run again here across every commit actually being pushed, plus an author
+# and committer identity check that commit-msg cannot see.
+#
+# stdin lines: <local ref> <local sha> <remote ref> <remote sha>
+ZERO='0000000000000000000000000000000000000000'
+ATTRIB='^[[:space:]]*(Co-Authored-By|Co-Authored|Claude-Session|Assisted-By|Generated-By|AI-Assisted-By)[[:space:]]*:'
+LINK='claude\.ai/(code|chat|share)'
+GENWITH='generated with[[:space:]]+\[?(claude|anthropic)'
+fail=0
+
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+  [ "$local_sha" = "$ZERO" ] && continue
+
+  if [ "$remote_sha" = "$ZERO" ]; then
+    range=$(git rev-list "$local_sha" --not --remotes)
+  else
+    range=$(git rev-list "$remote_sha..$local_sha")
+  fi
+  [ -z "$range" ] && continue
+
+  for c in $range; do
+    body=$(git log -1 --format='%B' "$c")
+    ident=$(git log -1 --format='%an <%ae> %cn <%ce>' "$c")
+    short=$(git log -1 --format='%h %s' "$c")
+
+    if printf '%s\n' "$body" | grep -q -i -E "$ATTRIB"; then
+      echo "pre-push: AI attribution trailer in $short" >&2; fail=1
+    fi
+    if printf '%s\n' "$body" | grep -q -i -E "$LINK"; then
+      echo "pre-push: claude.ai link in $short" >&2; fail=1
+    fi
+    if printf '%s\n' "$body" | grep -q -i -E "$GENWITH"; then
+      echo "pre-push: 'Generated with Claude' in $short" >&2; fail=1
+    fi
+    if printf '%s\n' "$body" | grep -q '🤖'; then
+      echo "pre-push: robot emoji attribution in $short" >&2; fail=1
+    fi
+    if printf '%s\n' "$ident" | grep -q -i -E '@anthropic\.com|(^|[^[:alnum:]])claude([^[:alnum:]]|$)'; then
+      echo "pre-push: AI identity as author or committer in $short" >&2; fail=1
+    fi
+  done
+done
+
+if [ "$fail" -ne 0 ]; then
+  echo "pre-push: push aborted, see CLAUDE.md git conventions" >&2
+  exit 1
+fi
+exit 0
