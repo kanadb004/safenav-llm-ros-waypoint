@@ -21,7 +21,8 @@ Status legend: `[ ]` not started, `[~]` in progress, `[x]` merged to main.
 | 2 | Simulation world, map, Nav2 bringup | [x] | #5 | #6 |
 | 3 | LLM resolver prototype (Python, GBNF) | [x] | #9 | #10 |
 | 4 | Synthetic benchmark and prompt sensitivity study | [x] | #14 | #15 |
-| 5 | Relational decomposition and resolver backend | [ ] | | |
+| 5 | Relational decomposition and resolver backend | [x] | #16 | #17 |
+| 5A | Corrective: cue gating, benchmark re-audit, latency re-measure | [ ] | | |
 | 6 | BT plugin, semantic goal node, end to end in sim | [ ] | | |
 | 7 | Confidence calibration pipeline | [ ] | | |
 | 8 | E2E validation, ablations, final results | [ ] | | |
@@ -30,19 +31,26 @@ Status legend: `[ ]` not started, `[~]` in progress, `[x]` merged to main.
 
 ## Budget
 
-Five phases remain, scoped to about **4.75 working days** of human time. Roughly four hours of
-that is unattended background compute that overlaps with other work.
+Phase 5 is spent. Four phases plus one corrective pass remain, scoped to about **4.25 working
+days** of human time. Roughly four hours of that is unattended background compute that overlaps
+with other work.
 
-| Phase | Human time | Background compute |
-|-------|-----------|--------------------|
-| 5 Relational decomposition and backend | 1.5 d | ~1 h (benchmark reruns) |
-| 6 BT plugin and E2E | 1.25 d | none |
-| 7 Calibration | 0.75 d | ~20 min |
-| 8 E2E validation and results | 0.75 d | ~3.5 h (300 loopback runs) |
-| 9 Hardware readiness | 0.5 d | none |
+| Phase | Human time | Background compute | Status |
+|-------|-----------|--------------------|--------|
+| 5 Relational decomposition and backend | 1.5 d | ~1 h | spent, merged #17 |
+| 5A Corrective pass | 1.0 d | ~1 h (benchmark reruns) | next |
+| 6 BT plugin and E2E | 1.25 d | none | |
+| 7 Calibration | 0.75 d | ~20 min | |
+| 8 E2E validation and results | 0.75 d | ~3.5 h (300 loopback runs) | |
+| 9 Hardware readiness | 0.5 d | none | |
+
+Phase 5 merged having met every engineering DoD item and missed both its accuracy gate (top-1
+0.560 against 0.80) and its latency gate (p90 7220 ms against 3000 ms). Section 8A is the
+corrective response. It is scoped to run **in the same Sonnet session that ran Phase 5**, so it
+is written as a continuation rather than a cold briefing.
 
 Phase 9 is documentation and configuration only. If the week runs tight it can slip to a later
-session without blocking anything, which puts the critical path at 4.25 days.
+session without blocking anything, which puts the critical path at 3.75 days.
 
 ## 0. Ground rules that apply to every phase
 
@@ -82,17 +90,25 @@ batch runs and for hardware. See section 13.
 Accuracy is stated at two levels, because abstention on adversarial commands is the
 calibrator's job and not the resolver's (see `docs/archive/superseded-decisions.md` S6).
 
+**The raw top-1 target was restated in Phase 5A (D37).** Phase 5's measurement established that
+96 of the 500 benchmark rows are structurally unanswerable: the graph offers two or more
+equally valid targets and the command text contains no cue that distinguishes them (D32). The
+benchmark's own ceiling is therefore about 0.81, and only if every other row is answered
+perfectly. The original >= 0.80 raw gate was never achievable and should not have been set.
+Section 8A corrects the labels and restates the gate against the corrected set.
+
 | Metric | Target | Phase |
 |--------|--------|-------|
-| Resolver raw top-1, 500 pair benchmark, gate disabled | >= 0.80 | 5 |
-| Resolver top-3, 500 pair benchmark | >= 0.88 | 5 |
+| Resolver raw top-1, corrected 500 benchmark (`synthetic_500_v2.jsonl`) | >= 0.76 (stretch 0.81) | 5A |
+| Resolver raw top-1, original labels, reported alongside for continuity | report as measured | 5A |
+| Resolver top-3, corrected 500 benchmark | >= 0.85, with the D12 ranking caveat stated | 5A |
 | Gated end-to-end accuracy, 500 pair benchmark (correct abstention counts as correct) | >= 0.85 | 7 |
 | Out of graph output rate, grammar on | 0% (structural) | 5, 8 |
 | Out of graph output rate, grammar off | report as measured (D24: 1.0% at Phase 4) | 8 |
 | ECE, calibrated confidence (sim eval set) | <= 0.08 (CV gate <= 0.10) | 7 |
 | False pass rate (sim eval set) | <= 5% | 7 |
 | False rejection rate (sim eval set) | <= 15% | 7 |
-| Resolver latency p90 | < 3000 ms on the Metal backend (section 13) | 5, 8 |
+| Resolver latency p90 | < 3000 ms on the Metal backend, measured cold (section 13) | 5A, 8 |
 | 150 run E2E sim validation, grammar on | 0 out of graph outputs | 8 |
 
 ## 2. Repository layout (final state)
@@ -338,6 +354,190 @@ error analysis, and do not start a fourth prompt iteration. The arithmetic to wa
 is in section 7's table, where 400 of 500 is the 0.80 gate.
 
 Gate: resolver raw top-1 >= 0.80, or a documented shortfall with the band above respected.
+
+**Outcome: merged (#17), engineering DoD met in full, accuracy and latency gates missed**
+(top-1 0.560, p90 7220 ms). Section 8 above is left exactly as it was written before the phase
+ran, so that the plan's prediction and the measured result can be compared. The corrective
+response is section 8A. Report:
+`docs/reports/phase-5-relational-decomposition-resolver-backend.md`.
+
+## 8A. Phase 5A: corrective pass
+
+**You are the same session that just ran Phase 5.** You already have the codebase, the report,
+and the error analysis in context. This section is a continuation, not a briefing: it does not
+re-describe `relations.py`, `backends.py`, the grammar builder or the benchmark runner, because
+you wrote them. Do not re-read your own Phase 5 report to "get up to speed"; you have it.
+Do not re-run `git checkout main && git pull` as if starting cold, though you do need a fresh
+branch (see 8A.5).
+
+Goal: recover the regression your error analysis identified, correct a benchmark labelling
+error that your ceiling check uncovered, re-measure latency without the thermal confound, and
+restate the gates against what is actually achievable. One working day. Timeboxed.
+
+**Two things changed in the diagnosis since section 8 was written**, and they are why this is a
+corrective pass rather than a retry:
+
+1. Section 8 assumed `relation: "none"` would be free on commands that do not need a hop. Your
+   section 5.1 measured 68 of 500 rows where the anchor was already correct and a spurious
+   non-`none` relation overwrote it, 39 of them in the four categories section 8 predicted
+   would be untouched. The plan's own `within` worked example is the most likely teacher of
+   that over-generalization. This is a plan defect, not an implementation defect.
+2. Section 8 assumed the model was the binding constraint on `spatial`/`multi_hop`. Your
+   section 5.2 and D32 measured that only 26 percent of those rows are answerable *at all*
+   given the graph. 96 of 500 benchmark rows have no unique correct answer. The benchmark, not
+   the model, is the binding constraint, and the >= 0.80 gate in section 8 was unreachable from
+   the moment it was written.
+
+### 8A.1 Cue gating, with a go/no-go pre-check first
+
+The hypothesis is that the hop should only ever fire when the command actually asks for one,
+and that "asks for one" is detectable lexically.
+
+**Do the pre-check before writing any of it.** It is cheap and it can kill the whole idea:
+
+- Assemble a closed list of relational cue phrases by reading the *command text* of the
+  `spatial` and `multi_hop` rows in `synthetic_500.jsonl`. Derive the list from the generator's
+  actual phrasings, do not invent it from intuition. Expect forms like "next to", "beside",
+  "left of", "right of", "across from", "opposite", "near", "adjacent to", "behind", "in front
+  of", "past", "beyond", "down from", "with the", "that has", "containing".
+- **Freeze the list in a file before running anything against it.**
+- Measure two coverage numbers and put both in the report:
+  - **recall**: fraction of `spatial` + `multi_hop` rows that contain at least one cue. If this
+    is below 0.90, cue gating is the wrong mechanism, because forcing `relation=none` on a
+    genuinely relational command destroys it. Stop and say so rather than proceeding.
+  - **false positive rate**: fraction of `direct` + `alias` + `negation` + `abbreviation` rows
+    that contain a cue. This should be near zero. Every such row is one cue gating cannot save.
+
+If the pre-check passes:
+
+- `relations.py` gains `has_relational_cue(command) -> bool` against the frozen list.
+- No cue: force `relation = "none"`, suppress the hop, and issue the call against the **v1
+  single-field grammar** (`{"room", "confidence"}`), not v2. This is the common path.
+- Cue present: v2 grammar and the hop exactly as Phase 5 built it.
+- Both grammars are built once per graph version and cached; selection is per request.
+- The v1 grammar builder still exists behind the flag you added in Phase 5; if it does not,
+  regenerating it is a few lines, not a rewrite.
+
+Using v1's smaller grammar on the common path is also the latency fix: your section 6 pinned
+the regression on per-token decode cost under the larger v2 alternation (~228 ms/token vs ~40
+ms/token), and most traffic will now avoid it.
+
+Do **not** tune the cue list after seeing accuracy results. If it needs changing, that is a
+finding to report, not an iteration to run.
+
+### 8A.2 Benchmark re-audit, graph-blind and mechanical
+
+Your D32 ceiling check already computes exactly the quantity this needs. Reuse that code
+rather than writing a second implementation that could disagree with it.
+
+The rule, which must be written and frozen **before** it is run:
+
+- For every `spatial` and `multi_hop` row, compute from the graph alone whether a unique target
+  exists: enumerate plausible anchors, apply the row's relation, and apply the section 8.1
+  disambiguation policy (alias and tag overlap with the command text).
+- Exactly one surviving target: `structurally_answerable: true`, label unchanged.
+- Zero or more than one surviving target: `structurally_answerable: false`, and
+  `expected` becomes `"none"` in the corrected set.
+- The rule sees the graph and the command text. **It never sees a model prediction.** This is
+  what makes it a labelling correction rather than fitting the test set to the system.
+- It runs over all 130 rows and its output is whatever it is. No hand-picking, no exceptions,
+  no post-hoc adjustment.
+
+Outputs:
+
+- `data/benchmark/synthetic_500_v2.jsonl`, carrying both `expected` (corrected) and
+  `expected_original`, plus the `structurally_answerable` flag and the rule's reasoning per row.
+  **`synthetic_500.jsonl` is not modified.**
+- `data/benchmark/RELABEL.md`: the frozen rule verbatim, counts by category, and ten worked
+  examples showing the graph reasoning behind the relabel.
+- Every accuracy table from here to Phase 8 reports **both** label sets.
+
+The justification to state plainly in the report: a command that the facility graph cannot
+answer uniquely has exactly one correct response, which is to abstain and ask for
+clarification. That is the system's safety claim, so `"none"` is the correct label and the
+original label was wrong. This is correcting mislabeled ground truth, not moving a goalpost.
+
+**Say the uncomfortable part out loud too**, in its own short paragraph: this relabel was
+designed after seeing Phase 5's results, by the same session that produced them, which is the
+same self-adjudication exposure D25 recorded for the Phase 4 dataset. The defences are that the
+rule is graph-derived and model-blind, that it was frozen before running, that both label sets
+are reported, and that the original file is untouched and in git. State those and let a reader
+judge. A Review 2 panel will reach for the uncharitable reading first, and the report should
+have already met it.
+
+### 8A.3 Cold latency re-measure
+
+Your section 6 disclosed that the 7220 ms p90 followed roughly 45 minutes of sustained Metal
+inference, and that an isolated mid-session spot check measured about 950 to 1000 ms. That
+confound has to be removed before a failed latency gate goes into the record.
+
+- Fresh `llama-server`, cold start, nothing else contending for the GPU, machine otherwise idle.
+- 100 calls over the held-out slice.
+- Report the v1-grammar path and the v2-grammar path **separately**, with
+  `predicted_per_token_ms` for each, which either confirms or refutes the grammar-size
+  hypothesis in your section 6.
+- Report a traffic-weighted p90 using the measured cue rate from 8A.1, since that is the number
+  the deployed system actually experiences.
+- If the cold numbers clear 3000 ms, say explicitly that Phase 5's section 6 figure was a
+  thermal artifact and should not be cited.
+
+### 8A.4 What not to do
+
+Scope discipline matters more here than anywhere else in the plan, because the temptation after
+a failed phase is to reopen everything.
+
+- No fourth prompt-template iteration. Phases 4 and 5 have now produced four data points on
+  this and the trend is not favourable.
+- No new model downloads. Phi-3.5 was checked and is 7 points worse (D36).
+- Do not touch the backend seam, grammar correctness, or traversal correctness. All three were
+  verified independently in Phase 5 and backend parity is 100 percent. They are not suspects.
+- Do not revisit Gazebo (D11, D30).
+- If 8A.1's pre-check fails, do not substitute a different mechanism on the fly. Report and stop.
+
+### DoD
+
+- [ ] Cue list frozen in a committed file before any measurement; recall on `spatial` +
+      `multi_hop` >= 0.90 and false positive rate on the four easy categories reported.
+- [ ] Two-path grammar selection implemented; unit test proves a cue-free command takes the v1
+      grammar and a cued command takes v2.
+- [ ] Regression check: of the 68 rows your section 5.1 identified as correct-anchor-overwritten,
+      the number now answered correctly is reported. This is the single number that says whether
+      8A.1 worked.
+- [ ] Relabel rule frozen and committed before running; `synthetic_500_v2.jsonl` and
+      `RELABEL.md` produced; `synthetic_500.jsonl` unmodified (verify with `git diff`).
+- [ ] Full 500 on corrected labels: top-1 >= 0.76, top-3 >= 0.85, out of graph 0.0.
+- [ ] Full 500 on original labels reported in the same table for continuity with Phase 4 and 5.
+- [ ] Per-category table against both label sets, with the Phase 4 and Phase 5 columns alongside
+      so the three-way comparison is visible in one place.
+- [ ] Cold latency re-measure: v1 path, v2 path, and traffic-weighted p90, each with
+      per-token decode cost. Verdict on whether Phase 5's 7220 ms was thermal.
+- [ ] Self-adjudication exposure paragraph present in the report (8A.2).
+- [ ] Report `docs/reports/phase-5a-corrective.md` written, PR merged.
+
+### Stop rule
+
+If top-1 on the corrected labels lands below **0.70**, stop. Do not iterate further. Record the
+result, leave the resolver in whichever configuration measured best, and move to Phase 6 with
+the accuracy shortfall carried into Phase 8's results as a documented limitation. The remaining
+phases do not depend on hitting 0.76: the BT plugin, the calibration gate and the end-to-end
+validation are all meaningful at 0.70, and Phase 7's gated metric is the headline the
+specification actually asks for.
+
+Budget discipline: this is one day. The schedule has no slack left for a second corrective pass.
+
+### 8A.5 Git flow
+
+Same session, new branch, normal conventions. Phase 5's branch is merged and deleted.
+
+```
+git checkout main && git pull
+gh issue create --title "Phase 5A: corrective pass" --body-file <file> --label phase
+git checkout -b phase-5a/corrective
+```
+
+PR title `Phase 5A: corrective pass`, body with the DoD checklist and `Closes #<issue>`.
+
+Gate: top-1 >= 0.76 on corrected labels, or a documented stop per the rule above.
 
 ## 9. Phase 6: BT plugin, semantic goal node, end to end in simulation
 
@@ -737,6 +937,36 @@ D1 to D26 were recorded during Phases 0 to 4 and are unchanged. D27 to D31 are t
   limitation in `RESULTS.md` and GPU passthrough is listed in Phase 10. Full reasoning: S4.
 - **D31: v1 Phase 9 (model ablation and final report) is merged into v2 Phase 8**, and Phase 9
   is reused for hardware readiness. Full reasoning and the renumbering table: S5.
+
+D32 to D36 were recorded during Phase 5; see
+`docs/reports/phase-5-relational-decomposition-resolver-backend.md` section 9. D37 to D39 are
+the Phase 5A corrective replan.
+
+- **D37: the Phase 5 raw top-1 gate of 0.80 was unachievable and is restated.** D32 established
+  that 96 of the 500 benchmark rows have no unique correct answer given the graph's topology,
+  putting the benchmark's own ceiling at about 0.81 even with a perfect resolver. The gate was
+  set in plan v2 without checking the benchmark's answerability, which is a planning defect, not
+  a measurement failure by Phase 5. Section 8A restates it as >= 0.76 against corrected labels
+  with a 0.70 stop floor, and section 1 carries the correction. Phase 4's 0.80 gate (D26) was
+  unachievable for the same reason, which revises that deviation's "capability ceiling"
+  conclusion: part of what both phases measured was a benchmark ceiling, not a model ceiling.
+- **D38: the v2 relational grammar is applied conditionally, not unconditionally.** Commands
+  carrying no lexical relational cue are resolved against the v1 single-field grammar with the
+  hop suppressed; only cued commands take the v2 grammar. Reason: Phase 5 section 5.1 measured
+  68 of 500 rows where a correct anchor was overwritten by a spurious non-`none` relation,
+  concentrated in the categories D29 assumed would be unaffected. This supersedes D29's
+  unconditional application while keeping its traversal mechanism intact for the cued case. It
+  is also the latency remedy, since the v2 grammar's larger alternation is what Phase 5 section
+  6 identified as the decode cost. Contingent on section 8A.1's pre-check: if cue recall on
+  `spatial` and `multi_hop` is below 0.90, this deviation is withdrawn and the phase stops.
+- **D39: the benchmark's structurally unanswerable rows are relabelled to `"none"`** in a new
+  `data/benchmark/synthetic_500_v2.jsonl`, by a rule computed from the graph and command text
+  alone with no visibility of any model prediction, frozen before execution.
+  `synthetic_500.jsonl` is unmodified and both label sets are reported in every table from
+  Phase 5A onward. Rationale: a command the facility graph cannot answer uniquely should
+  produce a clarification request, so `"none"` is the correct label and the original was wrong.
+  Exposure, stated plainly because it is real: the rule was designed after seeing Phase 5's
+  results by the session that produced them, the same self-adjudication pattern as D25.
 - **D32: Phase 5's raw top-1 gate was not met, and the shortfall is well outside the
   documented band.** Full 500 top-1 is 0.560 (gate >= 0.80, stop-and-report floor 0.74).
   `relations.py`'s disambiguation policy (alias/tag overlap, abstain on a tie), implemented
@@ -840,6 +1070,8 @@ and the annotation file.
 
 1. `git checkout main && git pull`, read the previous phase report in `docs/reports/`. If the
    phase is 5 or later, also read `docs/archive/superseded-decisions.md` once.
+   **Exception for Phase 5A**: it is a continuation of the Phase 5 session and assumes that
+   session's context. Skip the report re-read, keep the branch and issue steps (8A.5).
 2. Start the host inference server if the phase needs it:
    `llama-server -m models/phi3-mini-4k-instruct.Q4_K_M.gguf -ngl -1 --port 8080 --host 0.0.0.0`
    (see `docs/hardware/llama-server.md` after Phase 5 writes it).
