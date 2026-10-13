@@ -229,7 +229,7 @@ Two prompt iterations were tried; the more elaborate one made it worse.
 
 ## 8. Phase 5: relational decomposition and resolver backend
 
-Status: `[x]`, merged (PR TBD, closes #16).
+Status: `[x]`, merged (#17).
 Report: `docs/reports/phase-5-relational-decomposition-resolver-backend.md`.
 
 Goal: recover resolver accuracy to the 0.80 gate by moving graph traversal out of the model and
