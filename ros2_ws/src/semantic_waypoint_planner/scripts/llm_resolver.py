@@ -53,6 +53,9 @@ class LlmResolverNode(Node):
         # over HTTP, the shape used for batch runs against the host Metal server and on Jetson.
         self.declare_parameter("backend", "inprocess")
         self.declare_parameter("backend_url", "http://host.docker.internal:8080")
+        # Phase 5A (8A.1, D38): cue-free commands take the smaller v1 grammar with the hop
+        # suppressed. On by default; set false only to reproduce Phase 5's unconditional v2.
+        self.declare_parameter("cue_gating", True)
 
         annotations_path = self.get_parameter("annotations_path").value
         model_path = self._resolve_model_path(self.get_parameter("model_path").value)
@@ -82,6 +85,7 @@ class LlmResolverNode(Node):
             n_gpu_layers=self.get_parameter("n_gpu_layers").value,
             backend=self.get_parameter("backend").value,
             backend_url=self.get_parameter("backend_url").value,
+            cue_gating=self.get_parameter("cue_gating").value,
         )
         self.get_logger().info("model loaded")
 
@@ -194,6 +198,8 @@ class LlmResolverNode(Node):
             payload["anchor_room"] = result.anchor_room
             payload["relation"] = result.relation
             payload["n_relation_targets"] = result.n_relation_targets
+        if result.grammar_version != "fast_path":
+            payload["grammar_version"] = result.grammar_version
         return json.dumps(payload) if payload else ""
 
     def _get_room_pose(self, name: str):
