@@ -1,0 +1,100 @@
+{"command": "Take me to the charging_dock\u2014my tablet\u2019s about to die.", "intended_room": "charging_dock", "category": "direct", "persona": "admin_1"}
+{"command": "I need to get to the storage_room\u2014where do I put these boxes?", "intended_room": "storage_room", "category": "direct", "persona": "admin_1"}
+{"command": "Go to the lab\u2014I need to set up the equipment.", "intended_room": "lab", "category": "direct", "persona": "admin_1"}
+{"command": "Please navigate to the stock room\u2014I need to organize supplies.", "intended_room": "storage_room", "category": "alias", "persona": "admin_1"}
+{"command": "I\u2019ve got some testing to do\u2014take me to the research lab.", "intended_room": "lab", "category": "alias", "persona": "admin_1"}
+{"command": "Could you go to the maker space? I need to assemble something.", "intended_room": "workshop", "category": "alias", "persona": "admin_1"}
+{"command": "Can you direct me to the room left of the kitchen? I think the team is waiting there.", "intended_room": "reception", "category": "spatial", "persona": "admin_1"}
+{"command": "I need to reach the room next to the lab\u2014it\u2019s where we do repairs and build things.", "intended_room": "workshop", "category": "spatial", "persona": "admin_1"}
+{"command": "Take me to the space just beside the meeting room\u2014it\u2019s where we usually sit and work.", "intended_room": "office", "category": "spatial", "persona": "admin_1"}
+{"command": "Take me to where I can print out these documents before the meeting.", "intended_room": "printer", "category": "functional", "persona": "admin_1"}
+{"command": "I need to access the server bank for some diagnostics\u2014where\u2019s rack B?", "intended_room": "server_rack_b", "category": "functional", "persona": "admin_1"}
+{"command": "Can you take me to where I can run some tests on the new sensor array?", "intended_room": "lab", "category": "functional", "persona": "admin_1"}
+{"command": "Not the first rack, go to the second rack\u2014it\u2019s where the new servers are.", "intended_room": "server_rack_b", "category": "negation", "persona": "admin_1"}
+{"command": "I\u2019m not heading to the break room, take me to the sink\u2014it\u2019s right by the kitchen.", "intended_room": "kitchen_sink", "category": "negation", "persona": "admin_1"}
+{"command": "Not the front desk, go to the help desk\u2014they can assist with the booking.", "intended_room": "reception_desk", "category": "negation", "persona": "admin_1"}
+{"command": "Take me to the wrkshp\u2014there\u2019s a tool I need for this.", "intended_room": "workshop", "category": "abbreviation", "persona": "admin_1"}
+{"command": "Please go to bench 2\u2014I left my notes there.", "intended_room": "lab_bench_2", "category": "abbreviation", "persona": "admin_1"}
+{"command": "I need to check shelf 1 for the spare parts\u2014can you guide me?", "intended_room": "storage_shelf_1", "category": "abbreviation", "persona": "admin_1"}
+{"command": "I need to adjust the projector screen in the second conference room\u2014the one closest to the office area.", "intended_room": "meeting_room_b_screen", "category": "multi_hop", "persona": "admin_1"}
+{"command": "Can you take me to the bench in the lab where we usually prep samples? It\u2019s next to the door.", "intended_room": "lab_bench_2", "category": "multi_hop", "persona": "admin_1"}
+{"command": "Could you go to the docking bay? I need to retrieve some equipment.", "intended_room": "storage_room", "category": "direct", "persona": "admin_2"}
+{"command": "I need to get to the lab space\u2014the experiment is ready for testing.", "intended_room": "lab", "category": "direct", "persona": "admin_2"}
+{"command": "Please take me to the fabrication room\u2014I have parts to assemble.", "intended_room": "workshop", "category": "direct", "persona": "admin_2"}
+{"command": "I need to get to the server rack room\u2014the IT team is looking for me.", "intended_room": "server_room", "category": "alias", "persona": "admin_2"}
+{"command": "Take me to the dock\u2014my robot\u2019s almost out of juice.", "intended_room": "charging_dock", "category": "alias", "persona": "admin_2"}
+{"command": "Could you direct me to the stock room? I need to grab some supplies.", "intended_room": "storage_room", "category": "alias", "persona": "admin_2"}
+{"command": "I need to get to the room where we test things\u2014it\u2019s just to the left of where we build stuff.", "intended_room": "lab", "category": "spatial", "persona": "admin_2"}
+{"command": "Can you take me to the room next to the kitchen but not the meeting space? I need to grab something from there.", "intended_room": "reception", "category": "spatial", "persona": "admin_2"}
+{"command": "I need to get to the room just to the left of where we keep the servers\u2014it\u2019s where we store extra parts.", "intended_room": "storage_shelf_1", "category": "spatial", "persona": "admin_2"}
+{"command": "I need to access the secure area with the servers\u2014where is that?", "intended_room": "server_room", "category": "functional", "persona": "admin_2"}
+{"command": "Can you take me to where we keep the extra batteries for the robots?", "intended_room": "battery_shelf", "category": "functional", "persona": "admin_2"}
+{"command": "I need to print some documents\u2014where is the printing station?", "intended_room": "printer", "category": "functional", "persona": "admin_2"}
+{"command": "Don\u2019t go to the server rack room\u2014it\u2019s restricted. Take me to the nearby utility area where we keep spare parts.", "intended_room": "storage_room", "category": "negation", "persona": "admin_2"}
+{"command": "Not the main lab\u2014I\u2019m already there. Take me to the bench near the workshop for the repairs.", "intended_room": "workshop_bench", "category": "negation", "persona": "admin_2"}
+{"command": "I don\u2019t need the front desk\u2014they\u2019re busy. Take me to the help counter inside the lobby instead.", "intended_room": "reception_desk", "category": "negation", "persona": "admin_2"}
+{"command": "Navigate to the data rm\u2014it\u2019s critical we check the logs.", "intended_room": "server_room", "category": "abbreviation", "persona": "admin_2"}
+{"command": "Head to the chrg stn\u2014I need to plug in my device.", "intended_room": "charging_dock", "category": "abbreviation", "persona": "admin_2"}
+{"command": "Can you take me to the stor rm? I need to grab some boxes.", "intended_room": "storage_room", "category": "abbreviation", "persona": "admin_2"}
+{"command": "Head over to the printer and then take me to the desk next to it\u2014I left my notes there.", "intended_room": "office_desk_2", "category": "multi_hop", "persona": "admin_2"}
+{"command": "I need to go to the whiteboard in the meeting room where we usually sketch out ideas\u2014it\u2019s the second one along the hallway.", "intended_room": "whiteboard", "category": "multi_hop", "persona": "admin_2"}
+{"command": "Could you get me to the charger? My device is almost dead.", "intended_room": "charging_dock", "category": "direct", "persona": "phd_1"}
+{"command": "I need to access the stock room\u2014there\u2019s something I have to put away.", "intended_room": "storage_room", "category": "direct", "persona": "phd_1"}
+{"command": "Let\u2019s head to the research lab\u2014I\u2019ve got some samples to analyze.", "intended_room": "lab", "category": "direct", "persona": "phd_1"}
+{"command": "My phone\u2019s at 5%\u2014could you take me to the dock to charge?", "intended_room": "charging_dock", "category": "alias", "persona": "phd_1"}
+{"command": "The stock room seems to have the supplies I need\u2014can you guide me there?", "intended_room": "storage_room", "category": "alias", "persona": "phd_1"}
+{"command": "I\u2019m setting up an experiment\u2014could you take me to the research lab?", "intended_room": "lab", "category": "alias", "persona": "phd_1"}
+{"command": "Can you point me to the room that\u2019s just past the server rack area? I think it\u2019s the one with the charging station.", "intended_room": "charging_dock", "category": "spatial", "persona": "phd_1"}
+{"command": "I need to get to the room that\u2019s next to the kitchen but not the meeting space\u2014it\u2019s where we keep the coffee maker.", "intended_room": "coffee_machine", "category": "spatial", "persona": "phd_1"}
+{"command": "Take me to the room that\u2019s right next to where we have the big meeting tables\u2014it\u2019s the smaller room where we sit at desks.", "intended_room": "office", "category": "spatial", "persona": "phd_1"}
+{"command": "I\u2019ve got some parts to assemble\u2014can you show me where the workbench is?", "intended_room": "workshop_bench", "category": "functional", "persona": "phd_1"}
+{"command": "I need to print out these notes\u2014can you take me to where the printer is?", "intended_room": "printer", "category": "functional", "persona": "phd_1"}
+{"command": "I\u2019ve got some tools I need to grab\u2014can you show me where they\u2019re kept?", "intended_room": "tool_cabinet", "category": "functional", "persona": "phd_1"}
+{"command": "Not the charging station\u2014oh, I meant the docking area where we store stuff, not the actual plug.", "intended_room": "storage_room", "category": "negation", "persona": "phd_1"}
+{"command": "I don\u2019t need the lab space\u2014just the bench where I usually work. You know, the one by the window.", "intended_room": "lab_bench_1", "category": "negation", "persona": "phd_1"}
+{"command": "Not the emergency exit\u2014just the back door, but the one people usually use, not the one by the stairs.", "intended_room": "fire_exit", "category": "negation", "persona": "phd_1"}
+{"command": "The mtg rm A is where the meeting is\u2014can you take me there?", "intended_room": "meeting_room_a", "category": "abbreviation", "persona": "phd_1"}
+{"command": "I left my notebook in the offc\u2014can you take me to the offc?", "intended_room": "office", "category": "abbreviation", "persona": "phd_1"}
+{"command": "Can you go to the btry shlf? I need to check the spare batteries.", "intended_room": "battery_shelf", "category": "abbreviation", "persona": "phd_1"}
+{"command": "I\u2019m heading to the break room, but can you take me to the coffee maker first? I need a drink.", "intended_room": "coffee_machine", "category": "multi_hop", "persona": "phd_1"}
+{"command": "The toolbox near the bench in the work room\u2014can you take me to that?", "intended_room": "tool_cabinet", "category": "multi_hop", "persona": "phd_1"}
+{"command": "I need to plug my device in\u2014can you take me to the charger?", "intended_room": "charging_dock", "category": "direct", "persona": "phd_2"}
+{"command": "The docking bay has the supplies I need\u2014can you go there?", "intended_room": "storage_room", "category": "direct", "persona": "phd_2"}
+{"command": "I\u2019m setting up an experiment\u2014mind taking me to the lab space?", "intended_room": "lab", "category": "direct", "persona": "phd_2"}
+{"command": "I think the charger is out of power\u2014can you check the dock?", "intended_room": "charging_dock", "category": "alias", "persona": "phd_2"}
+{"command": "The stock room has extra supplies\u2014can you grab the toolkit?", "intended_room": "storage_room", "category": "alias", "persona": "phd_2"}
+{"command": "I need to set up the experiment in the lab space\u2014can you bring the samples?", "intended_room": "lab", "category": "alias", "persona": "phd_2"}
+{"command": "The lab is next to the workshop, but I need the room just before it\u2014can you find it?", "intended_room": "storage_room", "category": "spatial", "persona": "phd_2"}
+{"command": "The room to the right of where the servers are\u2014do you know where that is?", "intended_room": "charging_dock", "category": "spatial", "persona": "phd_2"}
+{"command": "I need the room between the meeting space and the open office\u2014can you take me there?", "intended_room": "meeting_room_b", "category": "spatial", "persona": "phd_2"}
+{"command": "I need to grab a water bottle\u2014where\u2019s that little station by the kitchen?", "intended_room": "water_cooler", "category": "functional", "persona": "phd_2"}
+{"command": "Can you take me to where we keep the extra lab supplies? I need some reagents for the experiment.", "intended_room": "storage_shelf_2", "category": "functional", "persona": "phd_2"}
+{"command": "I need to test this sensor\u2014can you take me to one of the lab benches?", "intended_room": "lab_bench_1", "category": "functional", "persona": "phd_2"}
+{"command": "Anywhere but the boardroom\u2014the room with the projector screen for the demo.", "intended_room": "meeting_room_b_screen", "category": "negation", "persona": "phd_2"}
+{"command": "Don\u2019t take me to the open office\u2014I need the room with the whiteboard.", "intended_room": "whiteboard", "category": "negation", "persona": "phd_2"}
+{"command": "Not the charging station, the room with the spare batteries over there.", "intended_room": "battery_shelf", "category": "negation", "persona": "phd_2"}
+{"command": "The tool cab is where I left the pliers\u2014can you grab them for me?", "intended_room": "tool_cabinet", "category": "abbreviation", "persona": "phd_2"}
+{"command": "I need to grab something from the stg shlf 2\u2014can you check it out?", "intended_room": "storage_shelf_2", "category": "abbreviation", "persona": "phd_2"}
+{"command": "The btry shlf has the spare batteries\u2014I need one for my device.", "intended_room": "battery_shelf", "category": "abbreviation", "persona": "phd_2"}
+{"command": "The spare batteries are in the rack by the door leading to the lab\u2014could you grab them?", "intended_room": "battery_shelf", "category": "multi_hop", "persona": "phd_2"}
+{"command": "I need to drop off these parts in the storage area\u2014could you put them on the first shelf by the door?", "intended_room": "storage_shelf_1", "category": "multi_hop", "persona": "phd_2"}
+{"command": "Take me to the dock so I can recharge my device.", "intended_room": "charging_dock", "category": "direct", "persona": "undergrad_1"}
+{"command": "I need to access the stock room\u2014I\u2019m looking for extra supplies.", "intended_room": "storage_room", "category": "direct", "persona": "undergrad_1"}
+{"command": "Take me to the research lab\u2014I need to check my equipment.", "intended_room": "lab", "category": "direct", "persona": "undergrad_1"}
+{"command": "My phone\u2019s dead\u2014can you take me to the charger?", "intended_room": "charging_dock", "category": "alias", "persona": "undergrad_1"}
+{"command": "I need to grab some spare parts from the stock room\u2014can you show me?", "intended_room": "storage_room", "category": "alias", "persona": "undergrad_1"}
+{"command": "I need to check something in the research lab\u2014can you take me there?", "intended_room": "lab", "category": "alias", "persona": "undergrad_1"}
+{"command": "I left my notes in the workspace right before the meeting room\u2014can you take me there?", "intended_room": "office", "category": "spatial", "persona": "undergrad_1"}
+{"command": "The room to the left of the lab is where we do the repairs\u2014can you take me there?", "intended_room": "workshop", "category": "spatial", "persona": "undergrad_1"}
+{"command": "I need to get to the room next to the break room\u2014it\u2019s where the team usually meets.", "intended_room": "meeting_room_a", "category": "spatial", "persona": "undergrad_1"}
+{"command": "I forgot my notebook in the main workspace. Can you take me to where I left it?", "intended_room": "office_desk_1", "category": "functional", "persona": "undergrad_1"}
+{"command": "I need to run some diagnostics on the robot. Is there a technical area with tools and equipment?", "intended_room": "lab", "category": "functional", "persona": "undergrad_1"}
+{"command": "Can you take me to where I can grab some tools? I\u2019m trying to fix something.", "intended_room": "tool_cabinet", "category": "functional", "persona": "undergrad_1"}
+{"command": "Not the server closet\u2014can you take me to the actual workspace where the team is?", "intended_room": "office", "category": "negation", "persona": "undergrad_1"}
+{"command": "I don\u2019t need the water fountain; take me to the kitchen where I can grab something to eat.", "intended_room": "kitchen", "category": "negation", "persona": "undergrad_1"}
+{"command": "Not the front door\u2014let\u2019s go to the meeting room where the presentation is happening.", "intended_room": "meeting_room_b", "category": "negation", "persona": "undergrad_1"}
+{"command": "I need to access the srvr room\u2014it\u2019s restricted.", "intended_room": "server_room", "category": "abbreviation", "persona": "undergrad_1"}
+{"command": "Head to the chg station\u2014I\u2019m almost out of juice.", "intended_room": "charging_dock", "category": "abbreviation", "persona": "undergrad_1"}
+{"command": "Can you take me to the stock room? I need supplies.", "intended_room": "storage_room", "category": "abbreviation", "persona": "undergrad_1"}
+{"command": "I need to go to the storage area near the lab to pick up the supplies for the experiment.", "intended_room": "storage_room", "category": "multi_hop", "persona": "undergrad_1"}
+{"command": "Take me to the desk near the door in the office area\u2014I left something there.", "intended_room": "office_desk_2", "category": "multi_hop", "persona": "undergrad_1"}
