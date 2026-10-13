@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<!--
+  Documentation only. bt_navigator loads SemanticNavigateToPose and SpeakText through
+  BehaviorTree.CPP v3's own BT_REGISTER_NODES mechanism (plugin_lib_names in nav2_params.yaml,
+  resolved by dlopen, not pluginlib), the same way every stock nav2_behavior_tree BT node is
+  loaded. This file records the two node types' ports for a reader; nothing in the build loads it.
+-->
+<root>
+  <TreeNodesModel>
+    <Action ID="SemanticNavigateToPose">
+      <input_port name="command" type="std::string"/>
+      <input_port name="confidence_threshold" type="double" default="0.72"/>
+      <input_port name="timeout_ms" type="int" default="3000"/>
+      <output_port name="resolved_pose" type="geometry_msgs::msg::PoseStamped"/>
+      <output_port name="resolved_room" type="std::string"/>
+      <output_port name="calibrated_confidence" type="double"/>
+    </Action>
+    <Action ID="SpeakText">
+      <input_port name="text" type="std::string"/>
+    </Action>
+  </TreeNodesModel>
+</root>

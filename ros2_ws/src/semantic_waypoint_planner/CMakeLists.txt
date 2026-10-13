@@ -14,10 +14,14 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(ament_cmake_python REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_action REQUIRED)
+find_package(rclcpp_lifecycle REQUIRED)
 find_package(rclpy REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
+find_package(nav2_msgs REQUIRED)
+find_package(behaviortree_cpp_v3 REQUIRED)
 find_package(ament_index_cpp REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(nlohmann_json REQUIRED)
@@ -74,6 +78,61 @@ install(TARGETS annotation_graph
 )
 
 # ---------------------------------------------------------------------------
+# BT plugin shared library: SemanticNavigateToPose, SpeakText. Loaded by bt_navigator through
+# plugin_lib_names (BehaviorTree.CPP v3's own dlopen mechanism, see plugin_description.xml),
+# so the library name below must match the plugin_lib_names entry in nav2_params.yaml exactly.
+# ---------------------------------------------------------------------------
+add_library(semantic_waypoint_planner_bt_node SHARED
+  src/bt_semantic_plugin.cpp
+  src/bt_speak_text.cpp
+)
+target_include_directories(semantic_waypoint_planner_bt_node PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+target_link_libraries(semantic_waypoint_planner_bt_node
+  "${cpp_typesupport_target}"
+  nlohmann_json::nlohmann_json
+)
+ament_target_dependencies(semantic_waypoint_planner_bt_node
+  rclcpp
+  std_msgs
+  geometry_msgs
+  behaviortree_cpp_v3
+)
+target_compile_definitions(semantic_waypoint_planner_bt_node PRIVATE BT_PLUGIN_EXPORT)
+
+install(TARGETS semantic_waypoint_planner_bt_node
+  DESTINATION lib
+)
+
+# ---------------------------------------------------------------------------
+# semantic_goal_node: operator facing lifecycle node, renders the per goal BT XML (D6) and
+# drives the navigate_to_pose action.
+# ---------------------------------------------------------------------------
+add_executable(semantic_goal_node src/semantic_goal_node.cpp src/semantic_goal_node_main.cpp)
+target_include_directories(semantic_goal_node PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+target_link_libraries(semantic_goal_node
+  "${cpp_typesupport_target}"
+  nlohmann_json::nlohmann_json
+)
+ament_target_dependencies(semantic_goal_node
+  rclcpp
+  rclcpp_action
+  rclcpp_lifecycle
+  std_msgs
+  nav2_msgs
+  ament_index_cpp
+)
+
+install(TARGETS semantic_goal_node
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+# ---------------------------------------------------------------------------
 # Python: ROS free core module, rclpy scripts
 #
 # rosidl_generate_interfaces() above already calls ament_python_install_package(${PROJECT_NAME})
@@ -94,6 +153,7 @@ install(FILES
 install(PROGRAMS
   scripts/annotate_map.py
   scripts/llm_resolver.py
+  scripts/say.py
   DESTINATION lib/${PROJECT_NAME}
 )
 install(PROGRAMS
@@ -106,6 +166,12 @@ install(DIRECTORY
   maps
   config
   launch
+  behavior_trees
+  DESTINATION share/${PROJECT_NAME}
+)
+
+install(FILES
+  plugin_description.xml
   DESTINATION share/${PROJECT_NAME}
 )
 
@@ -134,10 +200,14 @@ if(BUILD_TESTING)
   )
 
   add_launch_test(test/test_resolver_only_launch.py TIMEOUT 600)
+  add_launch_test(test/test_semantic_nav_launch.py TIMEOUT 600)
 endif()
 
 ament_export_include_directories(include)
-ament_export_libraries(annotation_graph)
-ament_export_dependencies(rclcpp std_msgs geometry_msgs visualization_msgs nlohmann_json)
+ament_export_libraries(annotation_graph semantic_waypoint_planner_bt_node)
+ament_export_dependencies(
+  rclcpp rclcpp_action rclcpp_lifecycle std_msgs geometry_msgs visualization_msgs nav2_msgs
+  behaviortree_cpp_v3 nlohmann_json
+)
 
 ament_package()

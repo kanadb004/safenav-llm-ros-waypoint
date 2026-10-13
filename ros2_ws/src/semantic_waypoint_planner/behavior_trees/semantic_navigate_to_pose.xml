@@ -1,0 +1,57 @@
+<!--
+  Template, not run directly. semantic_goal_node renders one copy per goal into
+  data/runs/bt/<timestamp>.xml with __COMMAND__, __CONFIDENCE_THRESHOLD__ and __TIMEOUT_MS__
+  substituted (command is XML-escaped). This is how the command string reaches the BT: the
+  NavigateToPose action has no string field, so the string is baked into the per-goal BT XML
+  as SemanticNavigateToPose's port literal instead of a blackboard remap (D6).
+
+  The Fallback's second branch (SpeakText) is a static, generic clarification line. The detailed
+  message that lists known room names is published separately: semantic_goal_node subscribes
+  /clarification_request (which SemanticNavigateToPose publishes on FAILURE, carrying
+  known_rooms) and republishes the room-listing text on /tts_text itself, because only that
+  long-lived node holds the full annotation graph; a BT port literal cannot carry a dynamically
+  fetched room list without a dedicated helper node this phase did not need. Recorded as a
+  design decision rather than built as a "ListRoomsToText" node (choice named in docs/PLAN.md
+  Phase 6 scope).
+-->
+<root main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <Fallback name="SemanticNavigateOrClarify">
+      <Sequence name="ResolveThenNavigate">
+        <SemanticNavigateToPose command="__COMMAND__"
+                                 confidence_threshold="__CONFIDENCE_THRESHOLD__"
+                                 timeout_ms="__TIMEOUT_MS__"
+                                 resolved_pose="{resolved_pose}"
+                                 resolved_room="{resolved_room}"
+                                 calibrated_confidence="{calibrated_confidence}"/>
+        <RecoveryNode number_of_retries="6" name="NavigateRecovery">
+          <PipelineSequence name="NavigateWithReplanning">
+            <RateController hz="1.0">
+              <RecoveryNode number_of_retries="1" name="ComputePathToPose">
+                <ComputePathToPose goal="{resolved_pose}" path="{path}" planner_id="GridBased"/>
+                <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
+              </RecoveryNode>
+            </RateController>
+            <RecoveryNode number_of_retries="1" name="FollowPath">
+              <FollowPath path="{path}" controller_id="FollowPath"/>
+              <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
+            </RecoveryNode>
+          </PipelineSequence>
+          <ReactiveFallback name="RecoveryFallback">
+            <GoalUpdated/>
+            <RoundRobin name="RecoveryActions">
+              <Sequence name="ClearingActions">
+                <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
+                <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
+              </Sequence>
+              <Spin spin_dist="1.57"/>
+              <Wait wait_duration="5"/>
+              <BackUp backup_dist="0.30" backup_speed="0.05"/>
+            </RoundRobin>
+          </ReactiveFallback>
+        </RecoveryNode>
+      </Sequence>
+      <SpeakText text="I am not sure which location you mean. Please check the clarification message."/>
+    </Fallback>
+  </BehaviorTree>
+</root>

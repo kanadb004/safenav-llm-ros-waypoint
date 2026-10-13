@@ -1,7 +1,7 @@
 # Nav2 Humble parameters for the TurtleBot4, copied from turtlebot4_navigation/config/nav2.yaml
 # and turtlebot4_navigation/config/localization.yaml (merged into one file per the plan) with
 # amcl noise parameters loosened slightly for the loopback simulator's noise free odometry.
-# bt_navigator.plugin_lib_names is left stock; Phase 6 adds semantic_waypoint_planner to it.
+# Phase 6 adds semantic_waypoint_planner_bt_node to bt_navigator.plugin_lib_names below.
 amcl:
   ros__parameters:
     use_sim_time: True
@@ -115,6 +115,7 @@ bt_navigator:
     - nav2_back_up_cancel_bt_node
     - nav2_assisted_teleop_cancel_bt_node
     - nav2_drive_on_heading_cancel_bt_node
+    - semantic_waypoint_planner_bt_node
 
 bt_navigator_navigate_through_poses_rclcpp_node:
   ros__parameters:
