@@ -53,6 +53,14 @@ def test_fewshot_count_limits_examples():
     assert block.count("Command:") == 5
 
 
+def test_system_text_documents_relation_contract():
+    builder = PromptBuilder(_graph(), fewshot_count=0)
+    system_text = builder.build_system_text()
+    assert '"relation"' in system_text
+    assert "left_of" in system_text
+    assert "within" in system_text
+
+
 def test_build_prompt_has_chat_markers():
     builder = PromptBuilder(_graph(), fewshot_count=0)
     prompt = builder.build_prompt("go to the kitchen")
