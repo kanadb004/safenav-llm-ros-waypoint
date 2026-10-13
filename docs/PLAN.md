@@ -116,7 +116,7 @@ Phase 7.
 | False pass rate (sim eval set) | <= 5% internally set and stricter than KnowNo's eps = 0.15 (D54) | 7 |
 | Human help rate (fraction of commands deferred) | report; KnowNo's comparable band is 0.58 to 0.92 (D54) | 7 |
 | False rejection rate (sim eval set) | report as measured; no literature sets this gate (D54) | 7 |
-| Resolver latency p90 | < 3000 ms on the Metal backend, measured cold (section 13). Internally set and **looser** than the HRI literature's 2000 ms (D54) | 5A, 8 |
+| Resolver latency p90 | < 3000 ms on the Metal backend, measured cold (section 13). Internally set and **looser** than the HRI literature's 2000 ms (D54). **Measured 3737 ms: the one outstanding miss**; mitigation in 16A O3 | 5A, 8, 16A |
 | 150 run E2E sim validation, grammar on | 0 out of graph outputs | 8 |
 
 ### Target provenance (added 2026-10-14, D54)
@@ -136,7 +136,8 @@ would be selection, not correction.
 | Help rate, 0.58 to 0.92 band | literature-anchored | KnowNo Table 2: step-wise help 0.58 (multi-step), 0.67 (mobile manipulator), 0.92 (bimanual) |
 | False pass <= 5% | internally set | stricter than KnowNo's `eps = 0.15`; see O2 before treating it as required |
 | False rejection <= 15% | **withdrawn** | no cited work sets such a gate; KnowNo reports help rate instead |
-| Latency p90 < 3000 ms | internally set | HRI work is stricter: Shiwa et al. 2008/2009 find impressions unchanged to 1000 ms and recommend reacting within 2000 ms |
+| Latency p90 < 3000 ms | internally set | HRI work is stricter: Shiwa et al. 2008/2009 find impressions unchanged to 1000 ms and recommend reacting within 2000 ms. Their filler remedy is 16A O3 |
+| Time to first utterance | literature-anchored, **not yet implemented** | Shiwa et al.: 1000 ms unchanged, react within 2000 ms. Added only if 16A O3 runs |
 | ECE <= 0.08, CV <= 0.10 | internally set | no peer-reviewed cutoff exists; Guo et al. 2017 fixes the 10-equal-width-bin method only |
 | Out of graph 0% | structural | guaranteed by GBNF at the sampler, not a measured target |
 | Raw top-1 | no gate | withdrawn in D45; benchmark ceiling about 0.81 (D32) |
@@ -156,6 +157,36 @@ should use 0.824 and read the result as a miss.
 
 **Neither reading licenses calling the result a pass.** The 0.72 is provisional on D53's
 feature defect regardless of which target it is set against.
+
+### Current metric status (audited 2026-10-14, after D54)
+
+Every live metric as measured, against the provenance-corrected targets above. Phases 0 to 7 are
+merged; Phase 4's and Phase 5's own gate results are historical and superseded by Phase 5A.
+
+| Metric | Target | Measured | Phase | Status |
+|--------|--------|----------|-------|--------|
+| Resolver raw top-1, corrected 500 | no gate (D45) | 0.732 | 5A | reported, about 90% of the 0.81 ceiling |
+| Resolver top-3, corrected 500 | >= 0.85 | 0.868 | 5A | met |
+| Out of graph rate, grammar on | 0% | 0% | 5A, 6 | met, structural |
+| Gated end-to-end, corrected 500 | >= 0.75 (0.824 strict) | 0.72 | 7 | within noise of 0.75, misses 0.824, provisional (D53) |
+| CV ECE, out of fold | <= 0.10 | 0.0698 | 7 | met |
+| Calibrated ECE, session 2 | <= 0.08 | 0.0730 | 7 | met |
+| False pass rate, session 2 | <= 5% | 0.0426 | 7 | met |
+| Help rate, session 2 | KnowNo band 0.58 to 0.92 | 0.53 | 7 | favourable, below every KnowNo setting |
+| Precision on acted-upon commands | none set | 0.957 | 7 | reported |
+| False rejection, session 2 | gate withdrawn (D54) | 0.3662 | 7 | reported, provable optimum for this feature vector |
+| **Resolver latency p90, cold** | **< 3000 ms** | **3737 ms** | **5A** | **miss, the only outstanding one** |
+| 150 run E2E, grammar on | 0 out of graph | not yet run | 8 | pending |
+
+**One metric is currently a miss: latency.** Everything else is met, favourable against its
+literature anchor, reported without a gate, or not yet measured. The gated accuracy row is the
+only ambiguous one and it is ambiguous by construction, because D54 reports two defensible
+targets and D53 marks the measurement provisional; it is not counted as met.
+
+**16A O3 does not change the latency row.** A conversational filler addresses perceived
+responsiveness, which is what Shiwa et al. actually measured, and would add a separate
+time-to-first-utterance metric. The 3737 ms stands either way, and any report that shows the new
+metric without this one is misrepresenting the system.
 
 ## 2. Repository layout (final state)
 
@@ -1405,6 +1436,44 @@ the closest published system accepts, but it is the project owner's call and mus
 such in the report rather than absorbed into a threshold. If the answer is no, the <= 5% bound
 stays and the high false rejection is its documented, accepted cost: that is a legitimate
 outcome of this item, not a failure of it.
+
+### O3. Conversational filler for the latency gate (Shiwa et al.)
+
+**Read what this does and does not do before starting.** It does **not** reduce resolver
+latency. The 3737 ms cold p90 stays 3737 ms, and the internal 3000 ms gate stays missed. What it
+does is address the thing that gate was a proxy for, with the remedy the cited paper itself
+tested, and it adds a literature-anchored metric that this system can actually be held to.
+
+**Why.** Shiwa et al. (HRI 2008; IJSR 2009) measured *system response time*, the delay before the
+robot responds at all, and found user impressions unchanged up to 1000 ms with a recommendation
+to react within 2000 ms. They then tested exactly this case, a robot that cannot answer that
+fast, and found a conversational filler (a short utterance signalling that a reply is coming)
+moderated the user's impression of a long delay. Our resolver cannot answer in 2000 ms, so the
+paper's own mitigation is the applicable result, not its headline number.
+
+**What.** On receiving a command, `semantic_goal_node` publishes a short acknowledgement to the
+existing `/tts_text` channel immediately, before the resolver is called, then publishes the
+resolution or the clarification request when it arrives. No new interface: `/tts_text` is
+already in section 12 and already carries the clarification text, so this is a publish ordering
+change plus a string, not new plumbing. Keep it a node parameter, default on, so the latency
+measurement can be run with it off.
+
+**Then measure and report both numbers, never one.**
+
+| metric | what it is | anchor |
+|--------|-----------|--------|
+| time to first utterance | command received to first `/tts_text` publish | Shiwa 1000 ms unchanged, 2000 ms react |
+| resolver p90 | command received to resolution, as Phase 5A measured it | internal 3000 ms, still missed |
+
+Reporting the first number alone would be the dishonest version of this item and is explicitly
+not what it is for. The report must state that the resolution still takes about 3.7 s and that
+the filler changes perceived responsiveness, which is what the paper measured, not throughput.
+
+**Cost.** Two to three hours including the launch test, most of it the test.
+
+**Not this item.** Genuinely reducing the 3737 ms is a different lever: fewer output tokens, a
+smaller model, or speculative decoding. Phase 8's model ablation already touches the second of
+those and should be read for it. Do not conflate the two in the report.
 
 ## 17. Session checklist
 
