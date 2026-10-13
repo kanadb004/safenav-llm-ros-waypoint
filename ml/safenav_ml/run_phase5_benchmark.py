@@ -76,6 +76,7 @@ def run(core: ResolverCore, rows: List[dict], backend_name: str, grammar_on: boo
         elapsed_ms = (time.monotonic() - t0) * 1000.0
         record = {
             "run_id": f"phase5_{backend_name}_{row['id']}",
+            "id": row["id"],
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "command": row["command"],
             "intended_room": row["expected"],
@@ -98,6 +99,7 @@ def run(core: ResolverCore, rows: List[dict], backend_name: str, grammar_on: boo
             "anchor_room": result.anchor_room,
             "relation": result.relation,
             "n_relation_targets": result.n_relation_targets,
+            "grammar_version": result.grammar_version,
             "backend": backend_name,
         }
         records.append(record)
