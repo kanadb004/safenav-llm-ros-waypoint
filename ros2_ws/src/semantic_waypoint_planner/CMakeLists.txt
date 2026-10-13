@@ -154,6 +154,7 @@ install(PROGRAMS
   scripts/annotate_map.py
   scripts/llm_resolver.py
   scripts/say.py
+  scripts/run_trials.py
   DESTINATION lib/${PROJECT_NAME}
 )
 install(PROGRAMS
