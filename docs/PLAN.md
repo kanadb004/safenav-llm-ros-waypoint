@@ -229,8 +229,16 @@ Two prompt iterations were tried; the more elaborate one made it worse.
 
 ## 8. Phase 5: relational decomposition and resolver backend
 
+Status: `[x]`, merged (PR TBD, closes #16).
+Report: `docs/reports/phase-5-relational-decomposition-resolver-backend.md`.
+
 Goal: recover resolver accuracy to the 0.80 gate by moving graph traversal out of the model and
 into code, and put inference behind a backend seam that deploys unchanged to the Jetson.
+
+**Closed below its own stop threshold at top-1 0.560 (D32), well under the 0.74-0.80 band.**
+The backend seam, grammar, and relations.py are all verified correct; the shortfall is the
+model's handling of the two-field contract itself (see the report's error analysis), carried
+into Phase 8 as an open risk rather than fixed by a fourth prompt iteration.
 
 Replaces v1's C++ resolver phase entirely (D27, and `superseded-decisions.md` S1).
 
@@ -729,6 +737,35 @@ D1 to D26 were recorded during Phases 0 to 4 and are unchanged. D27 to D31 are t
   limitation in `RESULTS.md` and GPU passthrough is listed in Phase 10. Full reasoning: S4.
 - **D31: v1 Phase 9 (model ablation and final report) is merged into v2 Phase 8**, and Phase 9
   is reused for hardware readiness. Full reasoning and the renumbering table: S5.
+- **D32: Phase 5's raw top-1 gate was not met, and the shortfall is well outside the
+  documented band.** Full 500 top-1 is 0.560 (gate >= 0.80, stop-and-report floor 0.74).
+  `relations.py`'s disambiguation policy (alias/tag overlap, abstain on a tie), implemented
+  exactly as section 8.1 specified, resolves only 26 percent of the `spatial`/`multi_hop` hard
+  subset even given a perfect anchor/relation choice: most rooms have 2+ `adjacent`/`near`
+  neighbors and most of these commands give no alias/tag cue to disambiguate between them.
+  Separately, the model over-applies non-`none` relations to commands that need `none`,
+  which corrupted 68/500 otherwise-correct answers, concentrated in the categories (`direct`,
+  `alias`, `negation`, `abbreviation`) D29 assumed would be unaffected. Per section 8's own
+  instruction for a result this far under 0.74, no further prompt iteration was attempted;
+  full error analysis in `docs/reports/phase-5-relational-decomposition-resolver-backend.md`
+  section 5. Carried into Phase 8 as an open risk rather than resolved here.
+- **D33: the Docker image needed `requests` added** (`docker/requirements.txt`) for
+  `HttpBackend` to construct inside the container; a concurrent backend request could also
+  crash the whole resolver node (only `TimeoutError` was caught in `_on_resolve`), now fixed
+  to catch any backend exception the same way.
+- **D34: `left_of`/`right_of` traversal direction was inverted in the first implementation.**
+  "A is left_of B" (12.7) means finding "what's left of B" requires B's inverse (`right_of`)
+  relation, not its own `left_of` edges. Caught by testing against the natural-language
+  meaning directly; see `relations.py` and the phase 5 report section 2.
+- **D35: `config/prompts/fewshot.jsonl` was missing the `relation` field** the v2 grammar
+  requires, a latent bug with no effect on this phase's numbers since production runs with
+  `fewshot_count=0`, but fixed so a future session that raises `fewshot_count` does not
+  silently teach the model the wrong schema.
+- **D36: the Phase 5 Phi-3.5 model check ran on the held-out 100 slice, not the full 500**,
+  since a full-500 run is roughly 100 minutes per model at the v2 grammar's measured decode
+  cost and the held-out slice was already shown to track the full-500 number within 1-2
+  points. Phi-3.5 mini scored 7 points worse than production, not within the 2-point
+  promotion margin, which the 100-row sample is decisive enough to show.
 
 ## 15. Phase 9: hardware readiness (no robot required)
 
