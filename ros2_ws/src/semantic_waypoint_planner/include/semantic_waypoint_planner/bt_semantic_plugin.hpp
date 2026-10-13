@@ -35,7 +35,7 @@ public:
   {
     return {
       BT::InputPort<std::string>("command"),
-      BT::InputPort<double>("confidence_threshold", 0.72, "abstain below this"),
+      BT::InputPort<double>("confidence_threshold", 0.85, "abstain below this"),
       BT::InputPort<int>("timeout_ms", 3000, "bounded wait on /resolve_waypoint"),
       BT::OutputPort<geometry_msgs::msg::PoseStamped>("resolved_pose"),
       BT::OutputPort<std::string>("resolved_room"),

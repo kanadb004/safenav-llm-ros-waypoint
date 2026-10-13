@@ -59,7 +59,7 @@ BT::NodeStatus SemanticNavigateToPose::tick()
     return BT::NodeStatus::FAILURE;
   }
 
-  double threshold = 0.72;
+  double threshold = 0.85;
   getInput("confidence_threshold", threshold);
   int timeout_ms = 3000;
   getInput("timeout_ms", timeout_ms);
