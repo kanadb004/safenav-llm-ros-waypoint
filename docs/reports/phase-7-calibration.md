@@ -1,5 +1,15 @@
 # Phase 7: confidence calibration pipeline
 
+> **Amendment, 2026-10-14, after merge (#23).** This report described the session 2 false
+> rejection rate (0.3662) and the gated end-to-end accuracy (0.72) as missing their targets.
+> Both are now recorded as **provisional**, because the section 12.8 feature vector they were
+> computed from is not implemented as specified: `n_candidates` is constant at 30.0 on all 300
+> trial rows, and `token_entropy` is the binary entropy of `raw_confidence` rather than an
+> entropy over the room-level distribution. Three of the five features carry independent signal.
+> See D53. The specification's >= 0.85 is unchanged and is not withdrawn; the comparison against
+> it is deferred until the fix in PLAN.md section 16A lands. No measurement, script or dataset
+> changed; only the pass or fail language on those two rows. Sections 3, 4 and 5 are amended.
+
 ## 1. What this phase built
 
 - `ml/safenav_ml/gen_personas.py`: generates the two simulated deployment logs via the Mistral
@@ -110,8 +120,8 @@ underconfident, not overconfident, in the region near 0.99.)
 | Session 2 raw-confidence ECE | 0.2030 | n/a | reported |
 | Session 2 calibrated ECE | 0.0730 | <= 0.08 | met |
 | Session 2 false pass rate | 0.0426 | <= 5% | met |
-| Session 2 false rejection rate | 0.3662 | <= 15% | **missed** |
-| Gated end-to-end accuracy, 500 benchmark (corrected labels) | 0.72 | >= 0.85 | **missed** |
+| Session 2 false rejection rate | 0.3662 | <= 15% | provisional (D53); provable optimum for this feature vector |
+| Gated end-to-end accuracy, 500 benchmark (corrected labels) | 0.72 | >= 0.85 | provisional (D53); comparison deferred to 16A |
 | Threshold written to `calibrator.json` | 0.85 | n/a | deployed |
 
 Gated per-category accuracy (500 benchmark, corrected labels, gate on):
@@ -147,9 +157,11 @@ Gated per-category accuracy (500 benchmark, corrected labels, gate on):
   `run_trials.py`, so it follows the `data/runs/` convention instead.
 - **D51: the system-wide default `confidence_threshold` is raised from 0.72 to 0.85** (the
   trained value) at every call site except the frozen `SemanticGoal.msg` comment; see section 1.
-- **D52: the gated end-to-end accuracy (0.72) and the session 2 false rejection rate (0.3662)
-  both miss their targets (>= 0.85 and <= 15%), and this was not corrected by retuning on
-  session 2, per the plan's explicit instruction.** Root cause: the grammar-constrained model's
+- **D52: the gated end-to-end accuracy measured 0.72 and the session 2 false rejection rate
+  measured 0.3662, against targets of >= 0.85 and <= 15%, and this was not corrected by retuning
+  on session 2, per the plan's explicit instruction.** Partly superseded by D53, which records
+  both numbers as provisional; the root cause analysis here stands and was confirmed
+  independently. Root cause: the grammar-constrained model's
   self-reported `raw_confidence` is only weakly discriminative between correct and incorrect
   resolutions. In session 1, correct resolutions average 0.925 raw confidence and incorrect ones
   average 0.896, both clustered inside a narrow 0.75-0.99 band (this echoes the Phase 3/4
@@ -157,19 +169,38 @@ Gated per-category accuracy (500 benchmark, corrected labels, gate on):
   features cannot separate the two classes much better than that, hitting the specification's
   <= 5% false pass safety bound forces the logistic model's decision threshold up to 0.85 on the
   calibrated scale, and that same high bar then rejects 36.6% of resolutions that were actually
-  correct. The two misses are the same underlying cause, not independent problems: a
+  correct. The two numbers have the same underlying cause, not independent ones: a
   wide-margin safety gate and a tight accuracy gate are in tension whenever the underlying
   confidence signal is this weakly separated, and no amount of retuning the threshold on session
   2 would resolve that tension, it would only move the loss from one metric to the other. This
-  is reported as measured, left as an open risk into Phase 8, and is the headline number the
-  specification's accuracy requirement should be read against.
+  is reported as measured, left as an open risk into Phase 8, and, per D53, is provisional
+  rather than a result the specification's accuracy requirement should yet be read against.
+- **D53: two of the five section 12.8 features carry no information, so the two numbers above
+  are provisional.** Added after merge. Measured on the 300 committed trial rows:
+  `n_candidates` is 30.0 on every row and its trained weight is exactly 0.0; `token_entropy` is
+  the binary entropy of `raw_confidence`, not of the room-level distribution 12.8 specifies
+  (Pearson -0.984, one entropy value per attainable confidence level, reproduced by
+  `-p ln p - (1-p) ln(1-p)` to 12 decimal places). `raw_confidence` has only six attainable
+  values, set by the grammar's `confidence-value` alternation. So the calibrator has three
+  independent features. Two consequences. First, 0.3662 is the provable optimum false rejection
+  at the <= 5% false-pass bound for this vector, matching the deployed value to four decimal
+  places, which confirms section 4's D52 root cause and rules out a fitting or threshold
+  explanation. Second, 0.72 is not a measurement of the system against the specification,
+  because the instrument is incomplete, so it is marked provisional and re-measured after
+  PLAN.md section 16A. This is not the D45 argument: >= 0.85 comes from the specification, is
+  not judgment-set, and is not withdrawn, and 0.72 sits about 6.5 standard errors below it, so
+  the gap is real. What is deferred is the comparison, not the target. See PLAN.md D53.
 
 ## 5. Open risks for Phase 8
 
 - The gated accuracy gap (0.72 vs. 0.85) is a resolver-confidence-signal problem, not a
   calibration-fitting problem; Phase 8's model ablation (Phi-3 mini vs. TinyLlama vs. Phi-3.5
   mini) is the next place this could plausibly improve, since it changes what confidence signal
-  is available in the first place rather than how it is scaled.
+  is available in the first place rather than how it is scaled. **Revised by D53:** the cheaper
+  and more likely lever is implementing `token_entropy` against the real room-level logits
+  (PLAN.md section 16A, O1), since the feature set currently has no genuine per-instance
+  uncertainty signal at all and a model swap would not change that. The ablation remains worth
+  running for its own sake, but it is not the first thing to try for this gap.
   `functional` (0.323) and `negation` (0.292) gated accuracy are far below their raw per-category
   top-1 numbers from Phase 5A, meaning the gate disproportionately rejects commands in exactly
   the categories where the resolver is usually right; this is worth a per-category false

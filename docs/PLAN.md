@@ -52,6 +52,9 @@ is written as a continuation rather than a cold briefing.
 Phase 9 is documentation and configuration only. If the week runs tight it can slip to a later
 session without blocking anything, which puts the critical path at 3.75 days.
 
+Section 16A holds optional scope that is budgeted at zero. It is attempted only if Phase 8 and
+Phase 9 are merged and time is left over, and it never displaces either.
+
 ## 0. Ground rules that apply to every phase
 
 - Target: software simulation, plus a hardware path that is proven feasible rather than
@@ -106,7 +109,7 @@ Phase 7.
 | Resolver raw top-1, corrected 500 benchmark (`synthetic_500_v2.jsonl`) | report as measured, no threshold (D45); 0.732 at 5A, derived ceiling about 0.81 | 5A |
 | Resolver raw top-1, original labels, reported alongside for continuity | report as measured | 5A |
 | Resolver top-3, corrected 500 benchmark | >= 0.85, with the D12 ranking caveat stated | 5A |
-| Gated end-to-end accuracy, 500 pair benchmark (correct abstention counts as correct) | >= 0.85 | 7 |
+| Gated end-to-end accuracy, 500 pair benchmark (correct abstention counts as correct) | >= 0.85 (specification); 0.72 at 7, provisional pending the 12.8 feature fix (D53) | 7, 16A |
 | Out of graph output rate, grammar on | 0% (structural) | 5, 8 |
 | Out of graph output rate, grammar off | report as measured (D24: 1.0% at Phase 4) | 8 |
 | ECE, calibrated confidence (sim eval set) | <= 0.08 (CV gate <= 0.10) | 7 |
@@ -674,17 +677,23 @@ section 10.
 
 Gate: calibrator deployed in the resolver; threshold fixed in `planner_params.yaml`.
 
-**Outcome: merged (#23), calibrator deployed and most DoD items met; the gated accuracy gate
-was not reached.** Session 1 (200) and session 2 (100) are disjoint from each other and the
-500 benchmark. CV ECE 0.0698 (<= 0.10, met) and session 2 calibrated ECE 0.0730 (<= 0.08, met),
-false pass 0.0426 (<= 5%, met). Session 2 false rejection 0.3662 misses the <= 15% target, and
-gated end-to-end accuracy on the 500 benchmark is 0.72 against the >= 0.85 target. Both misses
-trace to the same cause: the model's raw confidence is only weakly discriminative between
-correct and incorrect resolutions (session 1: 0.925 mean for correct versus 0.896 for incorrect,
-both inside a narrow 0.75-0.99 band), so the <= 5% false-pass safety bound forces a threshold
-(0.85) that also rejects a third of correct resolutions. Not retuned on session 2 per this
-section's own instruction. `semantic_cli` and the Python-versus-sklearn parity test both pass.
-Report: `docs/reports/phase-7-calibration.md`. Deviations D49 to D52.
+**Outcome: merged (#23), calibrator deployed, every engineering DoD item met.** Session 1 (200)
+and session 2 (100) are disjoint from each other and the 500 benchmark. CV ECE 0.0698 (<= 0.10,
+met) and session 2 calibrated ECE 0.0730 (<= 0.08, met), false pass 0.0426 (<= 5%, met).
+`semantic_cli` and the Python-versus-sklearn parity test both pass.
+
+Session 2 false rejection measured 0.3662 and gated end-to-end accuracy on the 500 benchmark
+measured 0.72. **Both are recorded as provisional rather than as results against their targets,
+because the section 12.8 feature vector they were computed from is not implemented as
+specified** (D53): `n_candidates` is constant at 30.0 across all 300 trial rows and carries a
+trained weight of exactly 0.0, and `token_entropy` is the binary entropy of `raw_confidence`
+rather than an entropy over the room-level distribution 12.8 asks for, so it adds no
+information (correlation -0.984, one entropy value per confidence level, exact to 12 decimal
+places). Three of the five features carry independent signal, and 0.3662 is the provable
+optimum at the <= 5% false-pass bound for that reduced vector, so no threshold choice improves
+it. The specification's >= 0.85 stands unchanged; the comparison against it is deferred until
+section 16A's fix lands, not dissolved. Not retuned on session 2 per this section's own
+instruction. Report: `docs/reports/phase-7-calibration.md`. Deviations D49 to D53.
 
 ## 11. Phase 8: end to end validation, ablations, final results
 
@@ -1106,6 +1115,7 @@ D40 to D44 were recorded during Phase 5A; see `docs/reports/phase-5a-corrective.
   mixing bonded and unbonded nodes under one `bond_timeout`.
 
 D49 to D52 were recorded during Phase 7; see `docs/reports/phase-7-calibration.md` section 4.
+D53 was added after Phase 7 merged, when the feature vector was audited.
 
 - **D49: `run_trials.py` calls `ResolverCore` directly rather than driving the full
   `/semantic_goal` to Nav2 ROS graph**, following the Phase 5 `backend=http` host-script
@@ -1120,14 +1130,42 @@ D49 to D52 were recorded during Phase 7; see `docs/reports/phase-7-calibration.m
 - **D51: the default `confidence_threshold` is raised from 0.72 to 0.85** (the trained value) at
   every call site except `msg/SemanticGoal.msg`'s own comment, which documents a convention, not
   an enforced default, and was left untouched to avoid any edit inside a frozen interface file.
-- **D52: gated end-to-end accuracy (0.72) and session 2 false rejection (0.3662) both miss their
-  targets (>= 0.85, <= 15%), and this was not corrected by tuning on session 2.** Root cause:
+- **D52: gated end-to-end accuracy measured 0.72 and session 2 false rejection measured 0.3662,
+  against targets of >= 0.85 and <= 15%, and this was not corrected by tuning on session 2.**
+  Superseded in part by D53, which establishes that the feature vector these were computed from
+  is not the one section 12.8 specifies and records both numbers as provisional. The root cause
+  analysis below stands and was confirmed independently:
   the model's raw confidence barely separates correct from incorrect resolutions (session 1:
   0.925 mean correct versus 0.896 mean incorrect, both inside 0.75-0.99), so the <= 5%
   false-pass safety bound forces a threshold high enough to also reject about a third of correct
-  resolutions. The two misses share one cause rather than being independent; see the phase
+  resolutions. The two numbers share one cause rather than being independent; see the phase
   report for the per-category breakdown and the Phase 8 implication (the model ablation, not a
   calibration retune, is the plausible next lever).
+- **D53: two of the five section 12.8 calibration features carry no information, so Phase 7's
+  0.72 and 0.3662 are recorded as provisional and the comparison against the specification's
+  >= 0.85 is deferred, not dissolved.** Measured directly on the 300 committed trial rows:
+  `n_candidates` is 30.0 on every row (constant, trained weight exactly 0.0), and
+  `token_entropy` is the binary entropy of `raw_confidence`, not an entropy over the room-level
+  distribution that 12.8 specifies (Pearson -0.984; each of the six attainable
+  `raw_confidence` values maps to exactly one entropy value, reproduced by
+  `-p ln p - (1-p) ln(1-p)` to 12 decimal places). `raw_confidence` itself takes only six
+  distinct values, since the grammar's `confidence-value` alternation restricts it. The
+  calibrator therefore has three independent features, not five. Holding the specification's
+  <= 5% false-pass bound, 0.3662 is the *provable optimum* false rejection rate for that vector
+  (best achievable on the ROC at that bound, equal to the deployed value to four decimal
+  places), which confirms D52's claim that no threshold retune helps and rules out a
+  calibration-fitting explanation. Consequence for reporting: 0.72 is not a measurement of the
+  system's gated accuracy against the specification, because the instrument it was taken with
+  is incomplete, in the same way that Phase 5's raw top-1 was not a measurement of resolver
+  capability while 96 benchmark rows were mislabelled (D32, D39). It is recorded as measured,
+  marked provisional, and re-measured after section 16A.
+  **This is explicitly not the D45 argument and must not be read as one.** The >= 0.85 is taken
+  from the specification's own metrics table, not set by judgment, so it is not withdrawn and
+  stays in section 1. Nor are the two numbers statistically close: at n = 500, 0.72 sits about
+  6.5 standard errors below 0.85 (standard error 0.020, 95 percent interval about
+  [0.681, 0.759]), so the gap is real and would be a genuine miss if the feature vector were
+  correct. What is deferred is the comparison, pending an instrument that implements 12.8.
+  If section 16A does not run, the honest reading is that the gap is unmeasured, not met.
 
 ## 15. Phase 9: hardware readiness (no robot required)
 
@@ -1197,6 +1235,55 @@ passthrough to close the D11 and D30 gap. Paper and patent drafts.
 
 Everything above must run unchanged except `model_path`, `n_threads`, `backend_url`, the map,
 and the annotation file.
+
+## 16A. Optional scope: deferred improvements (only if time remains)
+
+**Nothing in this section is committed work.** It is taken on only if Phase 8 and Phase 9 are
+merged and time is genuinely left over. If the week runs to its budget, this section is not
+started and the plan ends at Phase 9; that is the expected outcome, not a failure. Do not let
+any item here displace, descope, or delay Phase 8 or Phase 9. Numbered 16A rather than 18 to
+avoid renumbering section 17, following the 8A precedent.
+
+### O1. Implement `token_entropy` against the real room-level logits
+
+**Why.** D53 measured that `token_entropy` is currently the binary entropy of
+`raw_confidence`, a value the model self-reports inside its JSON output. It therefore carries no
+information the calibrator does not already have from `raw_confidence`, which leaves the gate
+with three independent features instead of five and no genuine per-instance uncertainty signal
+at all. Section 12.8 already specifies the correct quantity ("token_entropy (nats, room level
+distribution)"), so this is an implementation fix, not an interface change: **12.8 is frozen and
+stays exactly as written.**
+
+**What.** Read the sampler's logit distribution over the first room-name token (or the
+normalized distribution over the grammar's permitted room alternation at that position) from
+llama.cpp, and compute the entropy of that distribution in nats. `llama-server`'s `/completion`
+accepts `n_probs` and returns `completion_probabilities` per token, which is the cheapest route
+and needs no change to the backend seam; the `llama-cpp-python` path would use `logits_all` or
+the equivalent sampler hook. Keep both backends in agreement, since D23's seam contract requires
+it, and add a unit test asserting entropy is 0 on a one-hot distribution and `ln(k)` on a
+uniform distribution over `k` rooms.
+
+**Then, and this is the part that makes it worth doing.** Retrain the calibrator on the existing
+committed session files (no new Mistral calls, no new personas), re-pick the threshold under the
+same <= 5% false-pass rule, and re-measure session 2 false rejection and the gated 500 accuracy.
+Report all four numbers beside Phase 7's as a before-and-after. Write the new artifact as
+`config/calibrator.json` version 2 with regenerated `calibrator_parity_vectors.json`; keep the
+Phase 7 artifact alongside it rather than overwriting, per the 8A.5 preserve rule.
+
+**Cost.** About half a day, of which the retrain and re-measure is under an hour of compute
+because the resolver runs are cached and only the feature column changes. The 300 trial rows do
+need re-running to obtain the new feature, which is roughly 20 minutes of background inference.
+
+**Honest expectation.** This may not move the numbers. A real room-level entropy is the signal
+the feature set currently lacks entirely, which is why it is the first thing to try, but the
+underlying model may simply be poorly separated, in which case the result is a negative finding
+worth recording rather than an improvement. Either way it closes D53 and makes the >= 0.85
+comparison meaningful for the first time. Do not retune anything else while doing it, and do not
+touch the benchmark labels.
+
+**Not in scope here.** `n_candidates`, the other dead feature, stays as it is. It is constant at
+30.0 because the annotation graph always offers the same 30 rooms, and redefining it would
+require editing frozen section 12.8. Leave it documented as dead in D53 and do not change it.
 
 ## 17. Session checklist
 
