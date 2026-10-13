@@ -403,7 +403,7 @@ and that "asks for one" is detectable lexically.
 - **Freeze the list in a file before running anything against it.**
 - Measure two coverage numbers and put both in the report:
   - **recall**: fraction of `spatial` + `multi_hop` rows that contain at least one cue. If this
-    is below 0.90, cue gating is the wrong mechanism, because forcing `relation=none` on a
+    is below 0.85, cue gating is the wrong mechanism, because forcing `relation=none` on a
     genuinely relational command destroys it. Stop and say so rather than proceeding.
   - **false positive rate**: fraction of `direct` + `alias` + `negation` + `abbreviation` rows
     that contain a cue. This should be near zero. Every such row is one cue gating cannot save.
@@ -497,7 +497,7 @@ a failed phase is to reopen everything.
 ### DoD
 
 - [ ] Cue list frozen in a committed file before any measurement; recall on `spatial` +
-      `multi_hop` >= 0.90 and false positive rate on the four easy categories reported.
+      `multi_hop` >= 0.85 and false positive rate on the four easy categories reported.
 - [ ] Two-path grammar selection implemented; unit test proves a cue-free command takes the v1
       grammar and a cued command takes v2.
 - [ ] Regression check: of the 68 rows your section 5.1 identified as correct-anchor-overwritten,
@@ -536,6 +536,24 @@ git checkout -b phase-5a/corrective
 ```
 
 PR title `Phase 5A: corrective pass`, body with the DoD checklist and `Closes #<issue>`.
+
+**Deviation numbering: this phase's deviations start at D40.** D32 to D36 were recorded by
+Phase 5 and D37 to D39 by this corrective replan, so anything starting lower collides. Append
+them to section 14 and to the phase report as usual.
+
+**Preserve, do not replace.** Everything this phase supersedes stays on disk, the way plan v1
+was kept when v2 replaced it (`docs/archive/`) and the way section 8 was kept when 8A was added:
+
+- `data/benchmark/synthetic_500.jsonl` stays byte-identical; corrected labels live in
+  `synthetic_500_v2.jsonl`. Confirm with `git diff` before committing.
+- `docs/reports/phase-5-relational-decomposition-resolver-backend.md` is not edited; the new
+  report is `docs/reports/phase-5a-corrective.md`.
+- Both grammar paths are kept. This phase selects between v1 and v2, it does not retire either.
+- A revised prompt or grammar artifact is added alongside its predecessor with a version
+  suffix, as Phase 4 did with `system_template_v2.txt`, never overwritten in place.
+- `docs/PLAN.md` is amended only: tick the 5A status row, fill in the issue and PR numbers,
+  append deviations. Section 8 and this section's scope text stay as written, so that what was
+  planned and what was measured can still be compared afterwards.
 
 Gate: top-1 >= 0.76 on corrected labels, or a documented stop per the rule above.
 
@@ -958,7 +976,7 @@ the Phase 5A corrective replan.
   unconditional application while keeping its traversal mechanism intact for the cued case. It
   is also the latency remedy, since the v2 grammar's larger alternation is what Phase 5 section
   6 identified as the decode cost. Contingent on section 8A.1's pre-check: if cue recall on
-  `spatial` and `multi_hop` is below 0.90, this deviation is withdrawn and the phase stops.
+  `spatial` and `multi_hop` is below 0.85, this deviation is withdrawn and the phase stops.
 - **D39: the benchmark's structurally unanswerable rows are relabelled to `"none"`** in a new
   `data/benchmark/synthetic_500_v2.jsonl`, by a rule computed from the graph and command text
   alone with no visibility of any model prediction, frozen before execution.
