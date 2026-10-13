@@ -38,6 +38,7 @@ class FewshotExample:
     command: str
     room: str
     confidence: float
+    relation: str = "none"
 
 
 def load_template(path: str) -> "tuple[str, str]":
@@ -63,7 +64,10 @@ def load_fewshot(path: str) -> List[FewshotExample]:
             row = json.loads(line)
             examples.append(
                 FewshotExample(
-                    command=row["command"], room=row["room"], confidence=float(row["confidence"])
+                    command=row["command"],
+                    room=row["room"],
+                    confidence=float(row["confidence"]),
+                    relation=row.get("relation", "none"),
                 )
             )
     return examples
@@ -105,7 +109,7 @@ class PromptBuilder:
         chosen = self._fewshot[: self.fewshot_count]
         lines = ["Examples:"]
         for ex in chosen:
-            answer = json.dumps({"room": ex.room, "confidence": ex.confidence})
+            answer = json.dumps({"room": ex.room, "relation": ex.relation, "confidence": ex.confidence})
             lines.append(f'Command: "{ex.command}"\nAnswer: {answer}')
         return "\n".join(lines) + "\n"
 
