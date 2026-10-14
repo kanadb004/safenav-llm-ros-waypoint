@@ -16,7 +16,13 @@ from .graph import INVERSE_RELATIONS, AnnotationGraph
 
 RELATIONS = ("none", "left_of", "right_of", "adjacent", "near", "within")
 
+# PLAN.md 11B.2: the relations the text anchor rule covers. "within" is excluded, since it
+# legitimately anchors on whatever sub location the model names (the contract this rule does
+# not override); "none" means there is no hop to anchor at all.
+TEXT_ANCHOR_RELATIONS = ("left_of", "right_of", "adjacent", "near")
+
 _WS_RE = re.compile(r"\s+")
+_PUNCT_RE = re.compile(r"[^a-z0-9\s]")
 
 
 def _default_cues_path() -> str:
@@ -53,6 +59,83 @@ def has_relational_cue(command: str, cues: Optional[List[str]] = None) -> bool:
 
 def _normalize(text: str) -> str:
     return _WS_RE.sub(" ", text.strip().lower())
+
+
+def _normalize_for_anchor(text: str) -> str:
+    """Lowercase, punctuation to spaces, collapsed whitespace (PLAN.md 11B.2 step 2)."""
+    lowered = text.strip().lower()
+    no_punct = _PUNCT_RE.sub(" ", lowered)
+    return _WS_RE.sub(" ", no_punct).strip()
+
+
+def _edge_bearing_rooms(graph: AnnotationGraph) -> set:
+    """Rooms that appear in at least one ``edges`` entry. Sub locations have no edges and
+    cannot anchor a left, right, adjacent or near hop (11B.2 step 2)."""
+    names = set()
+    for edge in graph.edges:
+        names.add(edge.from_)
+        names.add(edge.to)
+    return names
+
+
+def _cue_end(normalized_command: str, cues: List[str]) -> Optional[int]:
+    """Index just past the first cue phrase in ``normalized_command``: the earliest starting
+    match, longest cue first on a tie. ``None`` when no cue is present."""
+    best: Optional[Tuple[int, int]] = None
+    for cue in cues:
+        cue_norm = _normalize_for_anchor(cue)
+        if not cue_norm:
+            continue
+        idx = normalized_command.find(cue_norm)
+        if idx == -1:
+            continue
+        end = idx + len(cue_norm)
+        if best is None or idx < best[0] or (idx == best[0] and end > best[1]):
+            best = (idx, end)
+    return best[1] if best else None
+
+
+def extract_text_anchor(
+    graph: AnnotationGraph, command: str, cues: Optional[List[str]] = None
+) -> Optional[str]:
+    """PLAN.md 11B.2 step 2: the anchor room named in ``command``'s text, independent of what
+    the model emitted. Searches the text after the first relational cue phrase for canonical
+    names (underscores as spaces) and aliases of edge bearing rooms, longest match first, on
+    word boundaries. Returns the single matching room, or ``None`` when the cue is missing, no
+    edge bearing room follows it, or more than one distinct room does (both fall back to the
+    model's own room as anchor in the caller, PLAN.md 11B.2 step 4)."""
+    if cues is None:
+        cues = load_cues()
+    normalized = _normalize_for_anchor(command)
+    end = _cue_end(normalized, cues)
+    if end is None:
+        return None
+    remainder = normalized[end:]
+
+    edge_rooms = _edge_bearing_rooms(graph)
+    phrases: List[Tuple[str, str]] = []
+    for name in edge_rooms:
+        room = graph.get_room(name)
+        candidates = [name.replace("_", " ")] + (list(room.aliases) if room else [])
+        for phrase in candidates:
+            phrase_norm = _normalize_for_anchor(phrase)
+            if phrase_norm:
+                phrases.append((phrase_norm, name))
+    # Longest phrase first, so a shorter alias of a different room never pre-empts a longer,
+    # more specific match at the same position (11B.2 step 2).
+    phrases.sort(key=lambda p: len(p[0]), reverse=True)
+
+    found_rooms: List[str] = []
+    for phrase_norm, name in phrases:
+        if name in found_rooms:
+            continue
+        if re.search(r"\b" + re.escape(phrase_norm) + r"\b", remainder):
+            found_rooms.append(name)
+
+    distinct = set(found_rooms)
+    if len(distinct) == 1:
+        return next(iter(distinct))
+    return None
 
 
 def _candidate_score(graph: AnnotationGraph, room_name: str, normalized_command: str) -> int:
@@ -112,3 +195,40 @@ def resolve_relation(
     if best_score > 0 and len(best) == 1:
         return best[0], len(targets)
     return None, len(targets)
+
+
+def apply_relational_hop(
+    graph: AnnotationGraph,
+    command: str,
+    relation: str,
+    model_room: str,
+    text_anchor_enabled: bool = True,
+    cues: Optional[List[str]] = None,
+) -> Tuple[str, str, str, int]:
+    """PLAN.md 11B.2: given the model's own ``relation`` and ``room`` (``model_room``, v1
+    semantics: the anchor before any hop), decide the hop anchor and perform the single hop.
+
+    Returns ``(final_room, anchor_used, anchor_source, n_relation_targets)``. ``anchor_source``
+    is ``""`` when no hop is attempted at all (``relation == "none"`` or ``model_room`` is not a
+    canonical name: the model abstained or named nothing resolvable), ``"text"`` when a unique
+    text anchor was found and used, ``"model"`` otherwise (today's behaviour, including every
+    ``within`` hop, which this rule never overrides).
+
+    Called identically by the resolver (``resolver_core.py``) and the held-out replay
+    (``ml/safenav_ml/replay_text_anchor.py``, PLAN.md 11B.3); never reimplement this decision
+    elsewhere.
+    """
+    if relation == "none" or model_room in ("", "none") or model_room not in graph.canonical_names:
+        return (model_room or "none"), model_room, "", 0
+
+    anchor = model_room
+    anchor_source = "model"
+    if text_anchor_enabled and relation in TEXT_ANCHOR_RELATIONS:
+        text_anchor_room = extract_text_anchor(graph, command, cues)
+        if text_anchor_room is not None:
+            anchor = text_anchor_room
+            anchor_source = "text"
+
+    target, n_targets = resolve_relation(graph, anchor, relation, command)
+    final_room = target if target is not None else "none"
+    return final_room, anchor, anchor_source, n_targets

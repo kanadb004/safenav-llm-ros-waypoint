@@ -123,6 +123,29 @@ CORRECTED_SPATIAL_LABELS = {
 }
 
 
+def parse_reasoning(reasoning: str) -> Dict[str, object]:
+    """PLAN.md 11B.1: the resolver already forwards ``reasoning`` (llm_resolver.py's
+    ``_encode_reasoning``) inside ``/semantic_goal_result``; this only extracts it into run
+    record columns, a harness gap only, with no interface change. Empty/default when
+    ``reasoning`` is empty or carries none of these keys (fast path, cue-free, or a "none"
+    relation that never attempted a hop)."""
+    defaults = {
+        "model_room": "", "anchor_room": "", "anchor_source": "", "relation": "none",
+        "n_relation_targets": 0, "grammar_version": "",
+    }
+    if not reasoning:
+        return defaults
+    try:
+        payload = json.loads(reasoning)
+    except (json.JSONDecodeError, TypeError):
+        return defaults
+    out = dict(defaults)
+    for key in defaults:
+        if key in payload:
+            out[key] = payload[key]
+    return out
+
+
 def _map_bounds(yaml_path: str = MAP_YAML_PATH) -> Tuple[float, float, float, float]:
     """(x_min, x_max, y_min, y_max) from the map YAML's origin/resolution and the referenced
     PGM's width/height, read from disk rather than hardcoded (PLAN.md 11A.3 off-map guard)."""
@@ -390,6 +413,7 @@ def main() -> int:
                 out_of_graph = bool(row.get("out_of_graph", False))
                 if out_of_graph:
                     out_of_graph_count += 1
+                reasoning_fields = parse_reasoning(row.get("reasoning", ""))
                 record = {
                     "run_id": f"e2e150-{trial}-{run_idx}",
                     "timestamp": time.time(),
@@ -425,6 +449,13 @@ def main() -> int:
                     "reached_intended": reached,
                     "nav_invalid": nav_invalid,
                     "out_of_graph": out_of_graph,
+                    "reasoning": row.get("reasoning", ""),
+                    "model_room": reasoning_fields["model_room"],
+                    "anchor_room": reasoning_fields["anchor_room"],
+                    "anchor_source": reasoning_fields["anchor_source"],
+                    "relation": reasoning_fields["relation"],
+                    "n_relation_targets": reasoning_fields["n_relation_targets"],
+                    "grammar_version": reasoning_fields["grammar_version"],
                 }
                 fh.write(json.dumps(record) + "\n")
                 fh.flush()

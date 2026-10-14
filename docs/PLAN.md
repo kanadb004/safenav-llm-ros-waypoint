@@ -27,7 +27,7 @@ Status legend: `[ ]` not started, `[~]` in progress, `[x]` merged to main.
 | 7 | Confidence calibration pipeline | [x] | #22 | #23 |
 | 8 | E2E validation, ablations, final results | [x] | #24 | #25 |
 | 8B | Corrective: e2e150 rescoring, clean reruns, claim corrections (section 11A) | [x] | #26 | #27 |
-| 8C | Spatial anchor fix and 8B corrections (section 11B) | [ ] | | |
+| 8C | Spatial anchor fix and 8B corrections (section 11B) | [x] | #28 | #29 |
 | 9 | Hardware readiness (no robot required) | [ ] | | |
 | 10 | Hardware bring-up (deferred until hardware is present) | [ ] | | |
 
@@ -45,7 +45,7 @@ with other work.
 | 7 Calibration | 0.75 d | ~20 min | |
 | 8 E2E validation and results | 0.75 d | ~3.5 h (300 loopback runs) | merged #25, claims under correction (D57) |
 | 8B Corrective pass (section 11A) | 0.75 d | ~3.5 h (450 loopback runs, isolated latency) | merged #27, wall clock 3 h 51 min |
-| 8C Spatial anchor fix (section 11B) | 0.5 d | ~1 h (150 loopback runs; held-out sets replayed offline) | next |
+| 8C Spatial anchor fix (section 11B) | 0.5 d | ~1 h (150 loopback runs; held-out sets replayed offline) | merged #29 |
 | 9 Hardware readiness | 0.5 d | none | |
 
 Phase 5 merged having met every engineering DoD item and missed both its accuracy gate (top-1
@@ -187,8 +187,10 @@ merged; Phase 4's and Phase 5's own gate results are historical and superseded b
 | False rejection, session 2 | gate withdrawn (D54) | 0.3662 | 7 | reported, provable optimum for this feature vector |
 | **Resolver latency p90, cold** | **< 3000 ms** | **3737 ms** | **5A** | **miss, the only outstanding one** |
 | 150 run E2E, grammar on | 0 out of graph | 0/150 | 8 | met, structural |
-| e2e150 wrong-room action rate, gate on vs. gate off | none set; Condition B versus C | 0.173 (gate on, rescored production) vs. 0.187 (gate off, 8B rerun); essentially unchanged | 8, 8B | measured (D58); Phase 8's withdrawn 0.772 vs. 0.080 was a navigation artifact, not this |
-| e2e150 wrong-room actions with the gate on | none set; session 2 false pass bound is <= 5% | 26 of 140 acted-on commands (rescored), 25 of them `spatial` | 8, 8B | measured (D58) |
+| e2e150 wrong-room action rate, gate on vs. gate off | none set; Condition B versus C | 0.173 (gate on, rescored production) vs. 0.187 (gate off, 8B rerun); essentially unchanged | 8, 8B | measured (D62); Phase 8's withdrawn 0.772 vs. 0.080 was a navigation artifact, not this |
+| e2e150 wrong-room actions with the gate on | none set; session 2 false pass bound is <= 5% | 26 of 140 acted-on commands (rescored), 25 of them `spatial` | 8, 8B | measured (D62) |
+| e2e150 wrong-room action rate, gate on vs. gate off, `text_anchor` on (8C, diagnostic only, default ships off) | none set; Condition B versus C | 0.000 (gate on) vs. 0.000 (gate off, re-gated offline); both eliminated | 8C | measured (D64), `docs/results/e2e150_report_8c.md` |
+| e2e150 wrong-room actions with the gate on, `text_anchor` on (8C, diagnostic only) | none set | 0 of 140 acted-on commands, spatial resolver correct 30/30 (up from 2/30) | 8C | measured (D64) |
 
 **Amended 2026-10-14 (D57), re-measured 2026-10-14 (D58, Phase 8B).** The two e2e150 rows above
 were added after the Phase 8 review and re-measured in `docs/reports/phase-8b-corrective.md`.
@@ -197,11 +199,22 @@ corrected comparison (wrong-room action rate, not reached-intended) shows the ga
 essentially no measurable difference on this command set, consistent with the gate passing
 25 of 30 spatial commands at calibrated confidence 0.90 to 0.95 regardless of threshold.
 
-**Corrected by D63 (2026-10-14).** The two e2e150 rows cite D58; the result is D62. The last
-sentence above locates the cause in the gate. A review of 8B found most of the wrong spatial
-passes come from the resolver applying the relational hop twice (the model puts the answer in
-the anchor field), so they are confident because the model's first answer is correct. Section
-11B (Phase 8C) fixes and re-measures it; these rows stay as 8B measured them.
+**Corrected by D63 (2026-10-14).** The two e2e150 rows cited D58; the result is D62 (fixed
+above). The last sentence above locates the cause in the gate. A review of 8B found most of
+the wrong spatial passes come from the resolver applying the relational hop twice (the model
+puts the answer in the anchor field), so they are confident because the model's first answer
+is correct. Section 11B (Phase 8C) fixes and re-measures it; these rows stay as 8B measured
+them, now joined above by the 8C diagnostic rerun.
+
+**Corrected by D64 (2026-10-14).** Phase 8C (section 11B) fixed the double hop
+(`relations.apply_relational_hop`/`extract_text_anchor`) and confirmed this reading from
+committed data (the two new rows above): with the fix forced on, e2e150's spatial resolver
+correct rate goes from 2/30 to 30/30 and wrong-room gate-passed actions from 26/140 to 0/140.
+The fix ships with its default **off** in `planner_params.yaml`, because the held-out replay
+(`docs/results/text_anchor_replay.md`, PLAN.md 11B.5) shows the corrected 500 benchmark's top-1
+falling by one row net (6 gained, 7 lost, all 7 losses in `multi_hop` compound sentences where
+the "first cue, nearest room" rule picks up the wrong clause's room). Session 2 false pass is
+unaffected either way (0.043 before and after).
 
 **One metric is currently a miss: latency.** Everything else is met, favourable against its
 literature anchor, reported without a gate, or not yet measured. The gated accuracy row is the
@@ -1492,6 +1505,14 @@ abstention on zero or ambiguous targets. The output set stays closed either way.
 The v1 form is preserved in `docs/archive/PLAN-v1.md` section 12.6 and is what Phases 3 and 4
 measured.
 
+**Amended 2026-10-14 (D64, Phase 8C).** For `left_of`/`right_of`/`adjacent`/`near`, the hop's
+anchor is no longer always `room` as the model emitted it: `relations.apply_relational_hop`
+prefers the single edge bearing room named in the command text after the first relational cue
+(`extract_text_anchor`), falling back to the model's `room` on zero or more than one match.
+`within` is unchanged (it still anchors on the model's `room`, a sub location by design). The
+grammar itself (the GBNF form above) does not change; this amends only what `resolver_core.py`
+does with the decoded `room`/`relation` pair. Ships with its default off (11B.5); see D64.
+
 ### 12.7 room_annotations.json schema
 ```
 {
@@ -1940,6 +1961,14 @@ appended now, unchanged in substance. D57 is the Phase 8B corrective replan.
   `/cmd_vel` against busy `/odom` traffic during an actual move) but is not the main cause of
   the nulls Phase 8 reported. `e2e_report.py` reports n and the null count beside every
   percentile, per 11A.3, rather than silently dropping them.
+
+  **Corrected by D63/D64 (2026-10-14).** The "90 of 91 null rows" claim cites the two 8B rerun
+  files; the production file (the one Phase 8 and this heading's "fixed" claim describe) has 79
+  nulls, 77 of them at the previous row's pose. The reruns have more nulls than production, so
+  `_drain()` "improves capture" is not supported by this file; `_drain()`'s capture-ordering
+  argument above stands on its own merits, independent of this count. The heading's "fixed"
+  refers to the spatial relabel only; the null count was always a measurement, not a bug, per
+  the paragraph's own text.
 - **D60: `e2e_report.py`'s metrics are split per PLAN.md 11A.2, each with its own numerator and
   denominator, replacing Phase 8's single "false start" figure that conflated navigation
   failure with a wrong resolution (D57 finding 1).** Acted rate, wrong-room action rate,
@@ -1979,6 +2008,24 @@ appended now, unchanged in substance. D57 is the Phase 8B corrective replan.
   `text_anchor` parameter), measures it by exact replay on the held-out sets with no new
   inference, confirms it with one e2e150 run, and amends the 8B documents. Nothing 8B wrote is
   deleted.
+- **D64: the text anchor rule (section 11B.2) amends the section 8.1/12.6 contract and ships
+  with its default off, per 11B.5's frozen decision rule.** For `left_of`/`right_of`/`adjacent`/
+  `near`, the hop now anchors on the single edge bearing room named in the command text after
+  the first relational cue, falling back to the model's own `room` field on zero or more than
+  one match (`relations.extract_text_anchor`/`apply_relational_hop`); `within` is unchanged. On
+  e2e150 (the rule's own development set, forced on for one diagnostic run,
+  `docs/results/e2e150_report_8c.md`), spatial resolver correct goes from 2/30 to 30/30 and
+  wrong-room gate-passed actions from 26/140 to 0/140, confirming D63's reading from committed
+  data. On the held-out replay (`docs/results/text_anchor_replay.md`, 11B.3), session 2 false
+  pass is unchanged (0.043) but the corrected 500's top-1 falls by one row net (6 gained, 7
+  lost), every loss in a `multi_hop` compound sentence where the "first cue, nearest room"
+  heuristic picks up the wrong clause's room (not tuned against, per 11B.7). `text_anchor`
+  therefore ships `false` in `planner_params.yaml`, overridable per row by any future caller
+  that wants the e2e150-style improvement on single-clause spatial commands at the cost of this
+  `multi_hop` regression; a `multi_hop`-aware rule or a 16A O1 retrain are better next steps
+  than tuning this one further. Also fixes `offline_gate_comparison.py` counting a `none`
+  answer as an acted-on row (D63 finding 3): gate-off wrong-room action rate corrects from 0.268
+  to 0.248 (500) and 0.290 to 0.190 (session 2); gate-on figures are unaffected.
 
 ## 15. Phase 9: hardware readiness (no robot required)
 

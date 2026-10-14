@@ -1,5 +1,16 @@
 # Phase 8B: corrective pass
 
+> **Amended 2026-10-14 (Phase 8C, `docs/reports/phase-8c-spatial-anchor-fix.md`, D64).** A
+> review of this pass found findings 1, 3, 4, 5, 7 and 8 below (PLAN.md 11B.0) rest on an
+> uncorrected cause or an uncorrected citation: finding 1 (section 1.6's calibrator diagnostic
+> and its "evidence for 16A O1" reading) is a resolver double hop, not a calibrator separability
+> problem; finding 3 (`offline_gate_comparison.py`'s gate-off wrong-room figures) undercounted
+> `none` answers as acted-on; finding 4 (`t_nav_start`) cites the wrong file; finding 5 cites D58
+> where the result is D62; finding 7's isolated latency gap and finding 8's Phi-3.5 McNemar/
+> `multi_hop` concentration were measured but not fully written up here. Body text below is
+> unchanged; see Phase 8C's report and `docs/results/RESULTS.md`/`docs/PLAN.md` section 1 for
+> the corrected numbers.
+
 This phase rescores what could be rescored without inference, reruns what could not on a clean
 and isolated setup, and corrects the documents named in PLAN.md section 11A. It changes no
 resolver, grammar, prompt, cue list, calibrator or threshold.

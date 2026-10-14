@@ -97,3 +97,73 @@ def test_corrected_spatial_labels_against_hand_read_edges(run_trials):
             f"hand-read answer for {room!r} is {expected!r}, table says "
             f"{run_trials.CORRECTED_SPATIAL_LABELS[room]!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Telemetry (PLAN.md 11B.1, D64): reasoning round trip through llm_resolver.py's
+# _encode_reasoning and this harness's own parse_reasoning, no ROS required for either side.
+# ---------------------------------------------------------------------------
+
+def _encode_reasoning(result):
+    """Local stand-in for LlmResolverNode._encode_reasoning (importing llm_resolver.py pulls in
+    rclpy at module scope); copied in miniature and kept in lockstep so this test exercises the
+    exact payload shape the node emits, not a reimplementation of the hop decision itself."""
+    import json as _json
+
+    payload = {}
+    if result.relation != "none":
+        payload["anchor_room"] = result.anchor_room
+        payload["relation"] = result.relation
+        payload["n_relation_targets"] = result.n_relation_targets
+        payload["model_room"] = result.model_room
+        payload["anchor_source"] = result.anchor_source
+    if result.grammar_version != "fast_path":
+        payload["grammar_version"] = result.grammar_version
+    return _json.dumps(payload) if payload else ""
+
+
+def test_reasoning_round_trips_a_hop_result(run_trials):
+    from semantic_waypoint_planner.resolver_core import ResolveResult
+
+    result = ResolveResult(
+        room="meeting_room_a",
+        raw_confidence=0.9,
+        reasoning="",
+        token_entropy=0.1,
+        room_ranking=[],
+        latency_ms=100.0,
+        mode="llm_grammar",
+        out_of_graph=False,
+        raw_text='{"room": "kitchen", "relation": "right_of", "confidence": 0.9}',
+        anchor_room="kitchen",
+        relation="right_of",
+        n_relation_targets=1,
+        grammar_version="v2",
+        model_room="kitchen",
+        anchor_source="text",
+    )
+    encoded = _encode_reasoning(result)
+    parsed = run_trials.parse_reasoning(encoded)
+    assert parsed == {
+        "model_room": "kitchen",
+        "anchor_room": "kitchen",
+        "anchor_source": "text",
+        "relation": "right_of",
+        "n_relation_targets": 1,
+        "grammar_version": "v2",
+    }
+
+
+def test_reasoning_round_trips_a_none_relation_result(run_trials):
+    """A "none" relation (no hop attempted) carries no hop fields; parse_reasoning fills in
+    its defaults rather than raising."""
+    parsed = run_trials.parse_reasoning("")
+    assert parsed == {
+        "model_room": "", "anchor_room": "", "anchor_source": "", "relation": "none",
+        "n_relation_targets": 0, "grammar_version": "",
+    }
+
+
+def test_parse_reasoning_ignores_malformed_json(run_trials):
+    parsed = run_trials.parse_reasoning("not json")
+    assert parsed["relation"] == "none"

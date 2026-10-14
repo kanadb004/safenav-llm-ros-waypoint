@@ -108,8 +108,15 @@ def build_session2_rows(calibrator: Calibrator) -> List[dict]:
 
 
 def gate_summary(rows: List[dict], threshold: float) -> Dict:
+    """PLAN.md 11B.0 finding 3 (D64): acted means a real room, not a "none" answer, passing the
+    threshold. At threshold 0.0 every row cleared the old definition, so a "none" answer on a
+    resolvable row counted as a wrong-room action; e2e150's own `gate_passed` (bt_semantic_plugin
+    .cpp) already requires ``response->success``, so this bug was local to this script."""
     n = len(rows)
-    acted = [r for r in rows if r["calibrated_confidence"] >= threshold]
+    acted = [
+        r for r in rows
+        if r["calibrated_confidence"] >= threshold and r["attempted_room"] != "none"
+    ]
     wrong = [r for r in acted if r["attempted_room"] != r["intended_room"]]
     return {
         "n": n,

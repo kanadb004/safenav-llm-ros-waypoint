@@ -10,6 +10,15 @@ llm_resolver_node_py:
     fewshot_count: 0
     prompt_template: "system_template.txt"
     allow_none: true
+    # PLAN.md 11B.2/11B.5 (D64): anchor a left/right/adjacent/near hop on the command text's
+    # own named room when exactly one edge bearing room follows the cue, rather than the
+    # model's `room` field. Fixes e2e150's spatial double hop (its development set), but the
+    # held-out replay (docs/results/text_anchor_replay.md) shows the corrected 500's top-1
+    # falling by one row net (6 gained, 7 lost, all 7 losses in multi_hop compound sentences
+    # where the "first cue, nearest room" rule picks up the wrong clause's room), so 11B.5's
+    # frozen decision rule ships this false here. Session 2 false pass is unaffected either way
+    # (0.043 before and after). Revisit with 16A O1's retrain or a multi_hop-aware rule.
+    text_anchor: false
     # calibrator_path defaults to <share>/config/calibrator.json (Phase 7), loaded automatically
     # once present. Not overridden here; see that file's own "threshold" field (0.85, trained by
     # ml/safenav_ml/train_calibrator.py) for the gate value every caller's default now matches
