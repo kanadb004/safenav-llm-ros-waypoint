@@ -2248,6 +2248,58 @@ executes.
 The guiding question for every item: *when the hardware arrives, what could still surprise us?*
 Anything that can be answered now gets answered now.
 
+### 15.0 Carry-over from the Phase 8D review (added 2026-10-14, do first)
+
+A planning review of Phase 8D (#32) confirmed its results from committed code: the replay
+reruns byte-identical to the frozen `_v2` files and their `MANIFEST.md` hashes, the stop rule
+clears, and `e2e_report.py --regate` gives 140/150 acting with 0 wrong at 0.85 and 143/150 with
+3 wrong (0.020) at 0.0. It also found four small defects that change no number and no decision.
+Fix them in Phase 9's first commit (`fix: correct phase 8d carry-over items`), before the
+hardware work. They need no inference, no simulator and no regenerated result file.
+
+1. **Wrong cause in the `--regate` comment.** `ml/safenav_ml/e2e_report.py`, `_acted`
+   docstring: it says the 8C figure was wrong because `gate_passed` alone cannot say whether a
+   row has a real room, and cites "D65 finding 2". The frozen file disproves this: no row of
+   `e2e150_production_8c.jsonl` has `gate_passed` true with an empty or `none`
+   `attempted_room`. The real cause, stated correctly in the 8D report section 3 and in
+   `e2e150_report_8c.md`, is that 8C never re-gated at 0.0 and reused the gate-on acted count.
+   It is 11C.0 finding 3, not 2. Correct the docstring to say that.
+2. **Stale label under `--regate`.** `e2e_report.py` `main()` labels every summary with its fixed
+   string ("production (grammar on, gate on)") even when `--regate 0.0` is passed. When
+   `--regate` is set, append the threshold to each label (for example "re-gated at 0.00"). Do
+   not regenerate committed result files for this; the hand-written tables in
+   `e2e150_report_8c.md` are already labelled correctly.
+3. **A banner split a paragraph.** `docs/results/e2e150_report_8c.md` opening: 8D inserted its
+   "Corrected by D65" banner mid-paragraph, so the original run-condition text ("Fresh host
+   `llama-server` (production model, ...") now reads as part of the correction. Move that text
+   back after the original first paragraph, so the banner is a paragraph of its own. Move it,
+   do not reword or delete it.
+4. **A claimed manifest note is missing.** The 8D report section 2 says `MANIFEST.md` notes,
+   per file, that runs frozen before 8D carry no `text_anchor` field. Only the
+   `e2e150_production_8c.jsonl` entry has such a note. Add one sentence below the
+   `MANIFEST.md` table: every `phase8_*`, `e2e150_*_8b`, `e2e150_loopback_rescored`,
+   `phase5a_full500` and `calibration_session*` file predates the `text_anchor` parameter, so
+   its behaviour is equivalent to `text_anchor` off; `e2e150_production_8c.jsonl` ran with it
+   forced on; the replay files carry both by construction. Add a one-line "Corrected in Phase 9"
+   note after that sentence of the 8D report rather than rewriting it.
+
+Two open items bear directly on Phase 9's own deliverables. They are context, not extra work.
+
+- **The hardware `timeout_ms: 3000` has no measured path behind it.** The only ROS-path
+  resolver latency measured with the GPU isolated is p50 3797 to 3942 ms and p90 5160 to 5540
+  ms (8B gate-off rerun, 8C production run, macOS Metal), above both the 3000 ms value and the
+  5 s BT timeout default of the Review 2 table (11B.0 finding 6). The Orin figure of about 0.7 s is
+  the specification's expectation, never measured. Write the hardware profile with 3000 as
+  planned, but the report, `bringup-checklist.md` and `cannot-verify.md` must say that it is
+  unvalidated, and that on any backend as slow as the macOS ROS path most requests would time
+  out into clarification. Phase 10 measures it first, before any trial.
+- **Nav start latency is mostly unmeasured.** The shipped e2e150 run
+  (`e2e150_production_8c.jsonl`) has `time_to_nav_start` null for 103 of 150 rows (8B production
+  had 79). Any bring-up checklist entry citing a time-to-navigation figure must give n and the
+  null count, or list the metric as unverified.
+
+Deviations recorded in Phase 9 start at D66 (8D added none).
+
 Scope:
 
 - `docker/Dockerfile.jetson`: ROS 2 Humble on JetPack (`dustynv/ros:humble-*` or an l4t base),
@@ -2279,6 +2331,8 @@ Scope:
 
 ### DoD
 
+- [ ] The four 15.0 carry-over items fixed in the first commit; the two context items reflected
+      in the report, `bringup-checklist.md` and `cannot-verify.md`.
 - [ ] `Dockerfile.jetson` committed and reviewed; the review notes in the report say what was
       checked and what remains unknown until it is built.
 - [ ] `docs/hardware/jetson-build.md`, `bringup-checklist.md`, `cannot-verify.md` committed.
