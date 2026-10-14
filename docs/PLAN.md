@@ -26,7 +26,7 @@ Status legend: `[ ]` not started, `[~]` in progress, `[x]` merged to main.
 | 6 | BT plugin, semantic goal node, end to end in sim | [x] | #20 | #21 |
 | 7 | Confidence calibration pipeline | [x] | #22 | #23 |
 | 8 | E2E validation, ablations, final results | [x] | #24 | #25 |
-| 8B | Corrective: e2e150 rescoring, clean reruns, claim corrections (section 11A) | [~] | #26 | |
+| 8B | Corrective: e2e150 rescoring, clean reruns, claim corrections (section 11A) | [x] | #26 | #27 |
 | 9 | Hardware readiness (no robot required) | [ ] | | |
 | 10 | Hardware bring-up (deferred until hardware is present) | [ ] | | |
 
