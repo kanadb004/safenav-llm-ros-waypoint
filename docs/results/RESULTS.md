@@ -467,3 +467,43 @@ document's table.
 - **e2e150 spatial category mislabelled for six of ten room keys until 8B (D57/D59).** The
   suite checked the wrong traversal direction for "room to the right/left of X" queries; the
   frozen correction and its rescore are in section 1 and section 5.1.
+
+## 8. Hardware readiness (Phase 9, no robot present)
+
+`docs/hardware/bringup-checklist.md` and `docs/hardware/cannot-verify.md` have the full detail
+behind every line below; this section is the one-line-per-claim summary this file's own
+convention asks for.
+
+**Verified (simulation evidence already exists, seam already exercised):**
+- Grammar identity across backends: 100/100 agreement, in-process vs. HTTP, Phase 5
+  (`data/runs/phase5_backend_parity.jsonl`). Moving the HTTP backend's target from a Metal
+  `llama-server` to a CUDA one changes only the URL, not the code path.
+- The `/resolve_waypoint` service contract and the BT plugin's load into a real `bt_navigator`:
+  both exercised by `test_semantic_nav_launch.py` and `test_resolver_core_offline.py` (31
+  tests), architecture-independent (pure ROS 2 IDL and `ament_cmake`/`rclcpp`).
+- The calibrator file loads by path and is architecture-independent; its math is covered by
+  `test_resolver_core_offline.py`'s feature-vector tests.
+- `/tts_text` is published with the expected content on all three DoD paths
+  (`test_semantic_nav_launch.py`); `espeak-ng` is installed in both Docker images.
+
+**Argued (reasoned from existing evidence, not directly measured on hardware):**
+- CUDA offload: `docker/Dockerfile.jetson` pins `-DGGML_CUDA=ON` and
+  `-DCMAKE_CUDA_ARCHITECTURES=87` rather than relying on auto-detection
+  (`docs/hardware/jetson-build.md` failure mode 2); this is a build-time argument, not a
+  runtime measurement, since there is no Jetson to run it on.
+- The hardware nav2 velocity profile (`nav2_params_hardware.yaml`) is a configuration-only
+  change (Create 3 limits reverted to the stock 0.26 m/s, D10 reversed for hardware) and is
+  tested for correctness, not for real motion safety.
+
+**Untested (no amount of simulation reaches these; see `cannot-verify.md` for why):**
+- **The hardware latency gate.** `timeout_ms: 3000` in the hardware profile has no measured
+  path behind it; the Orin NX's "about 0.7 s" is the specification's unmeasured expectation,
+  and the only real measurements (macOS Metal, ROS path) are p50 3797 to 3942 ms, p90 5160 to
+  5540 ms, both above 3000 ms (PLAN.md 15.0). This is the single largest risk carried into
+  Phase 10.
+- Real sensor noise into AMCL, Create 3 docking, thermal throttling of the Orin under
+  sustained inference, real human phrasing versus persona-generated phrasing (D7), and audio
+  hardware for TTS: all listed in `cannot-verify.md` with the specific reason simulation cannot
+  reach each one.
+- Nav start latency (`time_to_nav_start`) is null for 103 of 150 rows in the shipped e2e150 run;
+  any hardware figure for this metric must carry n and the null count or be marked unverified.
