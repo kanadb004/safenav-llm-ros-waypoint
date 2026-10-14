@@ -301,3 +301,44 @@ def test_text_anchor_default_agrees_in_yaml_core_and_node():
     assert node_default is True
     assert yaml_default is True
     assert core_default == node_default == yaml_default
+
+
+# PLAN.md section 15 (Phase 9): the hardware profile lives beside the sim profile in the same
+# file, under a "_hardware" suffixed node name (not wired into a launch file yet, Phase 10
+# decides that). These fields are the ones the plan calls out as allowed to differ.
+RESOLVER_HARDWARE_DIFF_FIELDS = {"n_threads", "timeout_ms", "backend", "backend_url"}
+
+
+def _load_planner_params():
+    with open(PLANNER_PARAMS_PATH, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
+def test_hardware_and_sim_resolver_profiles_both_load_and_validate():
+    params = _load_planner_params()
+    sim = params["llm_resolver_node_py"]["ros__parameters"]
+    hardware = params["llm_resolver_node_py_hardware"]["ros__parameters"]
+
+    assert hardware["timeout_ms"] == 3000
+    assert hardware["backend"] == "http"
+    assert hardware["backend_url"] == "http://127.0.0.1:8080"
+    assert isinstance(hardware["n_threads"], int) and hardware["n_threads"] > 0
+
+
+def test_hardware_resolver_profile_differs_from_sim_only_in_documented_fields():
+    params = _load_planner_params()
+    sim = params["llm_resolver_node_py"]["ros__parameters"]
+    hardware = params["llm_resolver_node_py_hardware"]["ros__parameters"]
+
+    assert set(sim) == set(hardware), "hardware profile must declare the same parameter names"
+    differing = {key for key in sim if sim[key] != hardware[key]}
+    assert differing == RESOLVER_HARDWARE_DIFF_FIELDS
+
+
+def test_hardware_and_sim_goal_node_timeout_profiles_both_load_and_validate():
+    params = _load_planner_params()
+    sim = params["semantic_goal_node"]["ros__parameters"]
+    hardware = params["semantic_goal_node_hardware"]["ros__parameters"]
+
+    assert sim["default_timeout_ms"] == 300000
+    assert hardware["default_timeout_ms"] == 3000
