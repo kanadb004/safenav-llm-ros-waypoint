@@ -20,6 +20,11 @@ llm_resolver_node_py:
     # 11B.5's rule rather than following it. Session 2 false pass is unaffected either way
     # (0.043 before and after).
     text_anchor: true
+    # D27/D28: inprocess is llama-cpp-python in this process (the sim/dev default). Spelled out
+    # here, matching the node's own default, so the Phase 9 hardware profile below can be
+    # compared against this one field by field.
+    backend: inprocess
+    backend_url: "http://host.docker.internal:8080"
     # calibrator_path defaults to <share>/config/calibrator.json (Phase 7), loaded automatically
     # once present. Not overridden here; see that file's own "threshold" field (0.85, trained by
     # ml/safenav_ml/train_calibrator.py) for the gate value every caller's default now matches
@@ -29,6 +34,42 @@ semantic_goal_node:
   ros__parameters:
     # Bounded wait SemanticNavigateToPose puts on /resolve_waypoint (section 9 scope). The sim
     # profile keeps this generous for the same reason section 13's sim timeout_ms is 300000:
-    # a container CPU fallback must not wedge a batch run. Lower this for a hardware profile
-    # once Phase 9/10 defines one.
+    # a container CPU fallback must not wedge a batch run. The hardware profile below uses 3000.
     default_timeout_ms: 300000
+
+# PLAN.md section 15 (Phase 9): the hardware profile, loaded by name on the Jetson instead of
+# llm_resolver_node_py / semantic_goal_node above. Not wired into any launch file yet, Phase 10
+# builds the hardware bring-up launch path and decides how it is selected; this phase only
+# writes and validates the values. Differs from the sim profile above in exactly five fields:
+# n_threads (Orin NX core count, not the macOS dev host's), timeout_ms, backend, backend_url
+# (section 13: http against a local llama-server instead of inprocess), and the
+# semantic_goal_node default_timeout_ms (the specification's 3000, D54: internally set, not
+# externally authoritative, section 13). Everything else, including model_path, grammar_on,
+# fewshot_count, allow_none, text_anchor, cue_gating and calibrator_path (unset here, so it
+# keeps its Phase 7 default of <share>/config/calibrator.json, threshold 0.85), is identical to
+# the sim profile on purpose: nothing about the resolver's own behaviour should change between
+# simulation and hardware, only where the model runs and how long the stack is willing to wait
+# for it. timeout_ms: 3000 and the hardware llama-server's "about 0.7 s" expectation are both
+# unvalidated; see PLAN.md 15.0 and docs/hardware/cannot-verify.md.
+llm_resolver_node_py_hardware:
+  ros__parameters:
+    model_path: "phi3-mini-4k-instruct.Q4_K_M.gguf"
+    n_ctx: 2048
+    # Orin NX ships as a 6-core (8 GB module) or 8-core (16 GB module) Arm Cortex-A78AE part.
+    # 6 is the conservative choice; Phase 10 raises this to 8 once the exact module in hand is
+    # confirmed, and remeasures rather than assuming the higher number is strictly better.
+    n_threads: 6
+    temperature: 0.3
+    max_tokens: 256
+    timeout_ms: 3000
+    grammar_on: true
+    fewshot_count: 0
+    prompt_template: "system_template.txt"
+    allow_none: true
+    text_anchor: true
+    backend: http
+    backend_url: "http://127.0.0.1:8080"
+
+semantic_goal_node_hardware:
+  ros__parameters:
+    default_timeout_ms: 3000

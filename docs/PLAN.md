@@ -432,7 +432,8 @@ that changes the conclusion of the whole phase.
 - Resolver parameter `backend` (`inprocess` default) and `backend_url`
   (default `http://host.docker.internal:8080`).
 - `docs/hardware/llama-server.md`: how to start the server on the macOS host with Metal, and
-  the equivalent Jetson CUDA invocation (the flags only, the Jetson build lands in Phase 9).
+  the equivalent Jetson CUDA invocation (the flags only; the Jetson build itself lands in
+  Phase 10, corrected from an earlier "Phase 9" here, see `docs/hardware/llama-server.md`).
 - The container's `/etc/hosts` route to the host must be verified from inside the container,
   not assumed.
 
@@ -2239,6 +2240,16 @@ appended now, unchanged in substance. D57 is the Phase 8B corrective replan.
   does not reproduce), aligns the defaults, corrects the figure and amends the documents. It
   runs no inference.
 
+- **D66: `docker/Dockerfile.jetson` targets JetPack 6 (L4T r36.x, Ubuntu 22.04), not JetPack 5
+  (Ubuntu 20.04).** Neither the specification nor any prior phase named a JetPack version.
+  JetPack 5's Ubuntu 20.04 rootfs has no official ROS 2 Humble apt repo (Humble targets Jammy);
+  `dustynv`'s JetPack 5 images work around this with a custom-built ROS mirror of unknown
+  currency against this project's exact package set. JetPack 6 moved to Ubuntu 22.04, so Humble
+  installs from its own official arm64 Jammy repo, the same apt packages the dev image already
+  uses. If the physical Orin NX in hand at Phase 10 is flashed with JetPack 5 instead, either
+  reflash (Orin NX supports JetPack 6) or re-derive this Dockerfile against the JetPack 5
+  mirror's actual catalog; do not assume the package versions transfer.
+
 ## 15. Phase 9: hardware readiness (no robot required)
 
 Goal: make Jetson Orin NX deployment a verified-feasible path rather than an assumption, using
@@ -2331,17 +2342,17 @@ Scope:
 
 ### DoD
 
-- [ ] The four 15.0 carry-over items fixed in the first commit; the two context items reflected
+- [x] The four 15.0 carry-over items fixed in the first commit; the two context items reflected
       in the report, `bringup-checklist.md` and `cannot-verify.md`.
-- [ ] `Dockerfile.jetson` committed and reviewed; the review notes in the report say what was
+- [x] `Dockerfile.jetson` committed and reviewed; the review notes in the report say what was
       checked and what remains unknown until it is built.
-- [ ] `docs/hardware/jetson-build.md`, `bringup-checklist.md`, `cannot-verify.md` committed.
-- [ ] Hardware and sim profiles both present in `config/planner_params.yaml`, both load and
+- [x] `docs/hardware/jetson-build.md`, `bringup-checklist.md`, `cannot-verify.md` committed.
+- [x] Hardware and sim profiles both present in `config/planner_params.yaml`, both load and
       validate in a unit test, and differ only in the documented fields.
-- [ ] Nav2 hardware velocity variant committed with its test.
-- [ ] Every entry in the bring-up checklist cites either a simulation result (with the report
+- [x] Nav2 hardware velocity variant committed with its test.
+- [x] Every entry in the bring-up checklist cites either a simulation result (with the report
       and section) or is listed in `cannot-verify.md`. No entry is left unsourced.
-- [ ] Report written, PR merged.
+- [x] Report written, PR merged.
 
 Gate: a competent engineer with the robot in front of them could follow `bringup-checklist.md`
 without reading this plan.

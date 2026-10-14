@@ -63,8 +63,8 @@ def _acted(row: dict, regate: Optional[float]) -> bool:
     """PLAN.md 11C.3: with ``--regate``, acted means a real room (``attempted_room`` not
     ``none``/empty) whose ``calibrated_confidence`` clears the given threshold, computed from
     the row's own stored columns rather than trusting the run's own ``gate_passed`` field (the
-    8C Condition B versus C figure was wrong because ``gate_passed`` alone does not say whether
-    the row has a real room, D65 finding 2). Without ``--regate``, ``gate_passed`` as recorded."""
+    8C Condition B versus C figure was wrong because 8C never re-gated at 0.0 and reused the
+    gate-on acted count, 11C.0 finding 3). Without ``--regate``, ``gate_passed`` as recorded."""
     if regate is None:
         return bool(row.get("gate_passed"))
     attempted = row.get("attempted_room")
@@ -239,16 +239,25 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    def _label(base: str) -> str:
+        if args.regate is None:
+            return base
+        return f"{base}, re-gated at {args.regate:.2f}"
+
     summaries = [
-        summarize(load_jsonl(args.production), "production (grammar on, gate on)", args.regate)
+        summarize(
+            load_jsonl(args.production), _label("production (grammar on, gate on)"), args.regate
+        )
     ]
     if args.grammar_off:
         summaries.append(
-            summarize(load_jsonl(args.grammar_off), "grammar off (gate on)", args.regate)
+            summarize(load_jsonl(args.grammar_off), _label("grammar off (gate on)"), args.regate)
         )
     if args.gate_off:
         summaries.append(
-            summarize(load_jsonl(args.gate_off), "gate off (threshold 0.0)", args.regate)
+            summarize(
+                load_jsonl(args.gate_off), _label("gate off (threshold 0.0)"), args.regate
+            )
         )
 
     md = render_markdown(summaries)

@@ -161,7 +161,7 @@ controller_server:
       min_vel_y: 0.0
       # Raised from the stock TB4 default (0.26) to 0.5 m/s: the 20x14 m simulated facility
       # makes a stock-speed tour take too long for the Phase 2 batch DoD (recorded deviation
-      # D10). Revisit for the hardware nav2 profile in Phase 10.
+      # D10). Reversed for the hardware nav2 profile in Phase 9: see nav2_params_hardware.yaml.
       max_vel_x: 0.5
       max_vel_y: 0.0
       max_vel_theta: 1.5

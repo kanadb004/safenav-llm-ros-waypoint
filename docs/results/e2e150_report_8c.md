@@ -2,15 +2,15 @@
 
 One-time diagnostic run (`data/frozen/e2e150_production_8c.jsonl`): production configuration
 (grammar on, gate 0.85) with `text_anchor` forced on for this run only (the shipped default was
-off at the time, per PLAN.md 11B.5; see `docs/results/text_anchor_replay.md`).
+off at the time, per PLAN.md 11B.5; see `docs/results/text_anchor_replay.md`). Fresh host
+`llama-server` (production model, Metal, nothing else on the GPU), fresh `semantic_nav.launch.py`,
+launch health check passed ("Managed nodes are active" twice, no out-of-bounds/no-map warnings
+before the suite started), `--no-bag` per D56/8B practice. Metrics via
+`ml/safenav_ml/e2e_report.py` (PLAN.md 11A.2).
 
 **Corrected by D65 (2026-10-14, Phase 8D).** `text_anchor` is now the shipped default
 everywhere (PLAN.md 11C). This run used exactly the now-shipped configuration, so it is the
-shipped e2e150 measurement, not a diagnostic-only run; no rerun was done. Fresh host `llama-server`
-(production model, Metal, nothing else on the GPU), fresh `semantic_nav.launch.py`, launch
-health check passed ("Managed nodes are active" twice, no out-of-bounds/no-map warnings before
-the suite started), `--no-bag` per D56/8B practice. Metrics via `ml/safenav_ml/e2e_report.py`
-(PLAN.md 11A.2).
+shipped e2e150 measurement, not a diagnostic-only run; no rerun was done.
 
 | suite | n | acted rate | wrong-room action rate (of n / of acted) | correct abstention | resolver correct | reach given correct (valid rows) | nav_invalid | out of graph | e2e p50/p90/p99 (n) | resolver p50/p90/p99 (n) | nav start p50/p90 (n, nulls) |
 |---|---|---|---|---|---|---|---|---|---|---|---|
