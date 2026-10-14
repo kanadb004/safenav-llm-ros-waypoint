@@ -35,6 +35,7 @@ each row's own stored feature values; see docs/results/offline_gate_comparison.m
 | text_anchor_replay_500.jsonl | e4113f59acaee7f71ddfa1df5b5a6cb5a619523f1ea2a44f13494188f98bb034 | 500 | Phase 8C (PLAN.md 11B.3) | `python3 ml/safenav_ml/replay_text_anchor.py --out docs/results/text_anchor_replay.md`; replays phase5a_full500.jsonl x synthetic_500_v2.jsonl through the text anchor fix, no inference re-run |
 | text_anchor_replay_session1.jsonl | 885ac11450ecf1f3dd5616e66171bfcc683b5947416e4403fc668a5128bd8464 | 200 | Phase 8C (PLAN.md 11B.3) | same invocation as above; replays calibration_session1_trials.jsonl |
 | text_anchor_replay_session2.jsonl | a506e1212075a94afe852a77b98d19b4c82a6b57c73da4b396f491eb8d431d76 | 100 | Phase 8C (PLAN.md 11B.3) | same invocation as above; replays calibration_session2_trials.jsonl |
+| e2e150_production_8c.jsonl | cf985edca0f3292bc82a58b9a153cbb9c2d69a96c1ed5d7632ddf15ab32b78a6 | 150 | Phase 8C (PLAN.md 11B.4) | `ros2 run semantic_waypoint_planner run_trials.py --suite e2e150 --out /ws/data/runs/e2e150_production_8c.jsonl --grammar-on --gate-threshold 0.85 --no-bag`, fresh stack, fresh host llama-server (phi3-mini, port 8080), nothing else on the GPU, `text_anchor` forced on in `planner_params.yaml` for this run only (reverted to false, the shipped default, immediately after) |
 
 ## Bags (uncommitted, too large; path/size/hash recorded here)
 

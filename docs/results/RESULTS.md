@@ -10,6 +10,18 @@
 > ten room keys and are now 2/30 correct, not reported before; all latency figures below that
 > were collected under GPU contention are now joined by an isolated remeasure.
 
+> **Amended 2026-10-14 (Phase 8C, `docs/reports/phase-8c-spatial-anchor-fix.md`, D64).** Section
+> 5.1's 2/30 spatial figure and the 26/140 wrong-pass finding are a resolver double hop
+> (`_resolve_llm` hopping twice because the model's `room` field often holds the answer, not the
+> anchor), not a calibrator separability problem; 11A.6's interpretation below is superseded.
+> Section 5.2's offline gate comparison had a bug counting `none` answers as acted-on rows at
+> threshold 0.0 (D63 finding 3), corrected here. The fix (`relations.apply_relational_hop`,
+> `text_anchor` parameter) ships with its default **off**: it eliminates e2e150's spatial misses
+> (2/30 to 30/30) but costs one net row on the held-out corrected 500 (`docs/results/
+> text_anchor_replay.md`), all losses in `multi_hop` compound sentences. Section 3's latency gap
+> (4494 vs. 3737 ms) stays an open, unexplained item (D63 finding 7), joined here by its own
+> 3797/5160 ms ROS-path figure, previously missing from this file (D63 finding 6).
+
 This is the single place every measured number in the project traces back to. Every table below
 cites the JSONL or CSV file it is computed from, under `data/` unless noted; regenerable run
 output lives under the gitignored `data/runs/`, committed source data lives under
@@ -84,7 +96,9 @@ Reliability diagram: `docs/results/calibration_session1.png`. Full metrics:
 | macOS host, Metal, sustained session (Phase 5, thermal confound) | 6478 ms | 7220 ms | 7768 ms | superseded by the cold 5A figures; not citable as the system's number (D44, corrected from a prior mis-citation of D41) |
 | Docker container, CPU only, arm64 VM (Phase 8 spot check, n=3, `backend=inprocess`) | 9612 ms (warm) | n/a | n/a | cold first call 165657 ms; confirms D16/D18's "tens of seconds to minutes" qualitatively, n too small for a real p50/p90; not the deployed path |
 | Phase 8 e2e150 resolver latency (production, driven through the full ROS graph) | 7883 ms | 10373 ms | 12954 ms | `data/frozen/phase8_e2e150_loopback.jsonl`; **not a clean measurement** (D56): the model ablation's own `llama-server` was running concurrently on the same Metal GPU for most of this suite, so these numbers are inflated by GPU contention and should not be read as a second, independent confirmation of the p90 gate result. Relative comparisons within this table are unaffected. |
-| macOS host, Metal, cold, isolated three-model remeasure (8B, `docs/results/model_ablation_latency_isolated.txt`) | 3579-4857 ms (per path) | 4087-5399 ms | 5698-12742 ms | phi3-mini traffic-weighted p90 4494 ms, a second GPU-isolated confirmation of the 5A figure (3737 ms); the 757 ms gap is session variance, not a methodology difference. Both still miss the < 3000 ms gate. |
+| macOS host, Metal, cold, isolated three-model remeasure (8B, `docs/results/model_ablation_latency_isolated.txt`) | 3579-4857 ms (per path) | 4087-5399 ms | 5698-12742 ms | phi3-mini traffic-weighted p90 4494 ms, a second GPU-isolated confirmation of the 5A figure (3737 ms); the 757 ms gap is session variance, not a methodology difference (open item, D63 finding 7, not explained further this phase). Both still miss the < 3000 ms gate. |
+| Clean production ROS path (8B gate-off rerun, grammar on, isolated GPU, n=150, `data/frozen/e2e150_gate_off_8b.jsonl`) | 3797 ms | 5160 ms | n/a | the full `/semantic_goal` -> Nav2 -> resolver path, not a resolver-only benchmark; a third confirmation beside the 3737 ms (5A) and 4494 ms (8B isolated) cold figures above, this one through the real ROS graph. Previously measured but omitted from this table (D63 finding 6); its p90 exceeds the 5 s BT tick timeout default in the Review 2 table (PLAN.md 11B.0 finding 6). |
+| Phase 8C e2e150 resolver latency, `text_anchor` on (diagnostic only, `data/frozen/e2e150_production_8c.jsonl`) | 3942 ms | 5540 ms | 7992 ms | +145/+380 ms beside the row above; the fix adds no tokens, so this is ordinary session variance, not contention (PLAN.md 11B.4) |
 
 **Gate: p90 < 3000 ms, internally set, stricter than nothing in the literature (D54).** The
 cold v1-path p90 (3497 ms) and the cue-gated traffic-weighted p90 (3737 ms, 5A) both miss it.
@@ -125,6 +139,16 @@ phi3-mini by 3.8 points (0.764 vs. 0.726), which clears D36's 2-point promotion 
 measurement, not a decision: 11A.7 only measures, and no model swap is made in this pass. A
 future phase choosing production models should use the corrected-label column, not the
 original one, and should re-run session 2 calibration on the candidate before promoting it.
+
+**Amended 2026-10-14 (Phase 8C, D63 finding 8).** The lead is significant on a paired exact
+McNemar test (45 rows only phi3.5-mini gets right, 26 only phi3-mini, p = 0.032), but 12 of the
+net 19 come from `multi_hop` (18 against 6), single run, and run-to-run variation of the same
+model is about 0.6 points (phi3-mini's 0.726 here against 5A's 0.732). The top-3 column above is
+still on original labels while top-1 is corrected; whether phi3.5-mini follows the anchor
+contract (names the anchor, not the answer, in `room`) better than phi3-mini is untested. Given
+`multi_hop`'s outsized share of the lead and this phase's finding that the anchor contract is
+exactly where phi3-mini's spatial/multi_hop failures concentrate, that question should be
+answered before any promotion decision.
 
 Raw data: `data/frozen/model_ablation_<model>.jsonl`. Summary: `docs/results/model_ablation.json`,
 `docs/results/model_ablation_corrected.txt`.
@@ -213,10 +237,27 @@ gate-on wrong-room action rate is 0.056 (of n) vs. 0.268 off, and on session 2 i
 0.290, both showing the gate doing real work. e2e150's spatial commands are specifically the
 case where it does not.
 
+**Corrected 2026-10-14 (Phase 8C, D63 finding 3).** `offline_gate_comparison.py` counted a
+`none` answer as acted-on at threshold 0.0 (e2e150's own `gate_passed` already requires a real
+room, so this bug was local to that script). Gate-off wrong-room action rate corrects from
+0.268 to **0.248** (500) and from 0.290 to **0.190** (session 2); gate-on figures (0.056, 0.020)
+are unaffected. The "roughly a factor of 5" reduction below still holds with the corrected
+figures (about 4.4x and 9.5x respectively).
+
 **Finding 4: spatial resolution nearly fails on unambiguous commands.** Rescored against the
 corrected labels, 2 of 30 production spatial rows are correct (1 of 30 under the original
 inverted labels). Phase 5A's 0.615 `spatial` figure in section 1 came mostly from correct
 abstention on rows relabelled to `none`; its original-label figure was 0.215.
+
+**Superseded 2026-10-14 (Phase 8C, D63/D64).** Phase 8C found the cause: `_resolve_llm` was
+hopping twice, because the v2 grammar's `room` field often holds the model's final answer, not
+the anchor the template asks for; the model was correct before the second hop on 18 of 18 local
+probe calls. The fix (`relations.apply_relational_hop`/`extract_text_anchor`, `text_anchor`
+parameter) takes e2e150 spatial resolution to 30/30 and wrong-room gate-passed actions to 0/140
+when forced on (`docs/results/e2e150_report_8c.md`); it ships with its default off because of a
+held-out regression elsewhere (`docs/results/text_anchor_replay.md`). This also means finding 2
+above and the "no measurable difference" headline were a symptom of the double hop, not an
+independent calibrator problem.
 
 **11A.6 calibrator diagnostic** (`docs/results/calibrator_diagnostic_e2e150.txt`): wrong passes
 have lower mean `raw_confidence` (0.904 vs. 0.955) and higher mean `token_entropy` and
@@ -226,6 +267,13 @@ not cleanly separable on any single feature without retraining, which was not do
 evidence against relaxing the false-pass bound in 16A O2 to 0.15: the problem on this command
 set is not a threshold that is too strict, it is that wrong answers already carry threshold-
 clearing confidence.
+
+**Superseded 2026-10-14 (Phase 8C, D63 finding 1).** This diagnostic's premise does not hold:
+the wrong passes are not a confidence-separability problem at all. They are confident because
+the model's own first answer (before the resolver's second, spurious hop) is usually correct;
+the feature vector never saw the wrong intermediate step that broke it. 11A.6's conclusion
+("evidence for 16A O1", withdrawn by D63) and the read against 16A O2's false-pass bound above
+rest on the wrong cause and should not be relied on; see section 1's D64 note instead.
 
 **The gate-off suite's e2e latency numbers are not a clean measurement of nominal drive time**
 and should not be read as "the system is this slow without the gate." `data/frozen/
@@ -260,13 +308,16 @@ calibrator) and `calibration_session2_trials.jsonl` (recalibrated the same way, 
 collected with `calibrator_loaded=False`), re-gated at 0.85 vs. 0.0. Full table and per-category
 breakdown: `docs/results/offline_gate_comparison.md`.
 
-| set | gate on (0.85), wrong-room action rate | gate off (0.0), wrong-room action rate |
-|---|---|---|
-| Corrected 500 benchmark | 0.056 (28/500) | 0.268 (134/500) |
-| Session 2 calibration trials | 0.020 (2/100), false pass 0.043 of acted (reproduces Phase 7's reported 0.0426) | 0.290 (29/100) |
+| set | gate on (0.85), wrong-room action rate | gate off (0.0), wrong-room action rate (superseded) | gate off (0.0), corrected (D63/D64) |
+|---|---|---|---|
+| Corrected 500 benchmark | 0.056 (28/500) | 0.268 (134/500) | **0.248 (124/500)** |
+| Session 2 calibration trials | 0.020 (2/100), false pass 0.043 of acted (reproduces Phase 7's reported 0.0426) | 0.290 (29/100) | **0.190 (19/100)** |
 
-Both sets show the gate reducing the wrong-room action rate by roughly a factor of 5; e2e150
-(section 5.1) does not, because its wrong spatial passes already clear the threshold.
+**Corrected 2026-10-14 (Phase 8C, D63 finding 3).** The gate-off column counted a `none` answer
+as acted-on; the rightmost column fixes it (`ml/safenav_ml/offline_gate_comparison.py`). Both
+sets still show the gate reducing the wrong-room action rate (about 4.4x and 9.5x with the
+corrected figures, "roughly a factor of 5" either way); e2e150 (section 5.1) does not, because
+its wrong spatial passes already clear the threshold, per the double-hop finding above.
 
 Raw data (Phase 8, superseded tables above): `data/frozen/phase8_e2e150_loopback.jsonl`,
 `data/frozen/phase8_e2e150_grammar_off.jsonl`, `data/frozen/phase8_e2e150_gate_off.jsonl`.
@@ -274,6 +325,36 @@ Raw data (Phase 8, superseded tables above): `data/frozen/phase8_e2e150_loopback
 `data/frozen/e2e150_loopback_rescored.jsonl`. Bags: `data/bags/e2e150_production/` (production
 suite only; the two 50-row Phase 8 ablations and the two 8B reruns all used `--no-bag`, per
 D56 and MANIFEST.md).
+
+### 5.3 Phase 8C: the spatial anchor fix, before and after (PLAN.md 11B, D64)
+
+**e2e150 (development set, `text_anchor` forced on for one diagnostic run only; the shipped
+default is off):**
+
+| | spatial resolver correct | wrong-room gate-passed actions (of 140) |
+|---|---|---|
+| before (8B, production) | 2/30 | 26 |
+| after (8C, diagnostic) | **30/30** | **0** |
+
+Full table: `docs/results/e2e150_report_8c.md`. Raw: `data/frozen/e2e150_production_8c.jsonl`.
+
+**Held-out replay, no inference re-run (`docs/results/text_anchor_replay.md`):**
+
+| | corrected 500, raw top-1 | corrected 500, rows changed | session 2 false pass (0.85) |
+|---|---|---|---|
+| before | 0.732 | - | 0.043 |
+| after | 0.730 | 15 (6 gained, 7 lost, 2 wrong-to-wrong) | 0.043 |
+
+**Decision (PLAN.md 11B.5): `text_anchor` ships `false`.** Session 2 false pass clears the
+bound (<= 0.05), but the corrected 500's top-1 falls (rows gained minus lost = -1 < 0); every
+lost row is in `multi_hop`, where the fix's compound-sentence false positives (e.g. "storage"
+matching `storage_room`'s alias inside an unrelated "tool storage" phrase two clauses away from
+the actual anchor) outweigh its single-clause spatial gains. Not tuned against this data per
+11B.7; recorded as the reason for a future phase (a `multi_hop`-aware rule, or 16A O1's retrain)
+to revisit.
+
+Raw data: `data/frozen/text_anchor_replay_500.jsonl`, `data/frozen/text_anchor_replay_session1.jsonl`,
+`data/frozen/text_anchor_replay_session2.jsonl`, `data/frozen/e2e150_production_8c.jsonl`.
 
 ## 6. Specification evaluation metrics table (filled in)
 
@@ -285,7 +366,7 @@ D56 and MANIFEST.md).
 | Gated end-to-end accuracy | 0.72 (provisional, D53) | section 2 |
 | Resolver latency p90 (deployed backend) | 3497-4272 ms cold (5A, isolated); 4494 ms cold (8B, isolated remeasure, a second confirmation); 7883-10373 ms under Phase 8's concurrent-GPU-load measurement (not citable against the gate, see section 3) | section 3 |
 | 150-run e2e validation, grammar on | 0/150 out-of-graph outputs (required, met) | section 5 |
-| Gate on vs. gate off, e2e150 wrong-room action rate | 0.173 (gate on, rescored) vs. 0.187 (gate off, 8B rerun): no measurable difference (8B, section 5.1). Supersedes the withdrawn 0.772 vs. 0.080 reached-intended figure (D57), which measured a diverging simulator |
+| Gate on vs. gate off, e2e150 wrong-room action rate | 0.173 (gate on, rescored) vs. 0.187 (gate off, 8B rerun): no measurable difference (8B, section 5.1). Supersedes the withdrawn 0.772 vs. 0.080 reached-intended figure (D57), which measured a diverging simulator. Phase 8C found the cause (a resolver double hop, not a calibrator problem) and fixed it; with the fix forced on, both drop to 0.000 (section 5.3), but it ships off by default (11B.5) |
 
 This table reproduces the shape of the metrics table in `docs/reference/Review_2_Phase_2.docx`,
 which was drafted inside this project and never approved at Review 2 (D54); its numbers carry

@@ -150,6 +150,18 @@ would need to catch already carry threshold-clearing confidence. The gate does m
 reduce wrong-room actions on the two sets it was tuned against (the 500 benchmark and session
 2 calibration trials), which Phase 8B reports alongside as the honest comparison.
 
+**Phase 8C spatial anchor fix** (`docs/reports/phase-8c-spatial-anchor-fix.md`) found the cause
+of 8B's 2/30 spatial figure: for "the room to the left/right/near/adjacent to X" commands,
+Phi-3 mini often fills the v2 grammar's `room` field with the final answer instead of the
+anchor X, so the resolver hops a second time from it, two hops past the correct room. The fix
+anchors the hop on the room named in the command text instead, taking e2e150 spatial
+resolution to 30/30 and wrong-room gate-passed actions to 0/140 when forced on. It ships with
+its default **off**, because the held-out replay (the corrected 500 benchmark and both
+calibration sessions, no inference re-run) shows a one-row net regression confined to
+`multi_hop` compound sentences, where the same "first cue, nearest room" rule picks up the
+wrong clause's room; session 2 false pass is unaffected. Also fixed: `offline_gate_comparison.py`
+was counting a "none" answer as acted-on, inflating its gate-off wrong-room figures.
+
 ## Limitations
 
 - Loopback simulation only; Gazebo does not run in the container (D11, D30).
