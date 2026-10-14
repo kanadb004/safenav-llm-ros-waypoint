@@ -1,5 +1,15 @@
 # SafeNav-LLM: consolidated results (Phases 4 through 8)
 
+> **Amended 2026-10-14 (Phase 8B, `docs/reports/phase-8b-corrective.md`).** Sections 1, 3, 4, 5,
+> 6 and 7 below are corrected in place for this pass; each superseded figure stays visible with
+> a "superseded by 8B" note rather than being deleted. Every table now cites a file in
+> `data/frozen/` (PLAN.md 11A.9). Headline corrections: the e2e150 gate-on vs. gate-off
+> reached-intended comparison (section 5) was a navigation artifact, not a gate effect, and the
+> corrected comparison (wrong-room action rate) shows the gate making no measurable difference
+> on this command set; the e2e150 spatial category's intended rooms were mislabelled for six of
+> ten room keys and are now 2/30 correct, not reported before; all latency figures below that
+> were collected under GPU contention are now joined by an isolated remeasure.
+
 This is the single place every measured number in the project traces back to. Every table below
 cites the JSONL or CSV file it is computed from, under `data/` unless noted; regenerable run
 output lives under the gitignored `data/runs/`, committed source data lives under
@@ -12,7 +22,7 @@ is Phase 9/10.
 
 | Phase | Configuration | n | top-1 | top-3 | out-of-graph |
 |-------|--------------|---|-------|-------|--------------|
-| 4 | v1 single-field grammar, best prompt iteration | 500 | 0.662 | n/a | 0.01 (D24) |
+| 4 | v1 single-field grammar, best prompt iteration | 500 | 0.662 | 0.780 (superseded by 8B's finding that this table omitted it; `docs/reports/phase-4-prompt-study.md` line 165) | 0.01 (D24) |
 | 5 | v2 relational grammar, unconditional hop | 500 | 0.560 | 0.754 | 0.0 |
 | 5A | v1/v2 cue-gated selection, corrected labels (`synthetic_500_v2.jsonl`) | 500 | **0.732** | 0.868 | 0.0 |
 | 5A | same, original labels (continuity with Phase 4/5) | 500 | 0.646 | n/a | 0.0 |
@@ -20,7 +30,9 @@ is Phase 9/10.
 The Phase 5A corrected-label top-1 (0.732) has no pass/fail gate (D45): 96 of 500 rows are
 structurally unanswerable from the graph alone (two or more equally valid targets, no
 distinguishing cue in the command text), so the benchmark's own ceiling is about 0.81. 0.732 is
-about 90 percent of that ceiling.
+about 90 percent of that ceiling. **96 of 500 is D32's target-uniqueness count for the ceiling
+calculation above, not the 8A.2 relabel's own count of rows it actually changed (99 of 130,
+D42); the two measure different properties and are not interchangeable (8B correction).**
 
 ### 1.1 Per-category top-1, all four configurations
 
@@ -69,9 +81,10 @@ Reliability diagram: `docs/results/calibration_session1.png`. Full metrics:
 |-------|-----|-----|-----|-------|
 | macOS host, Metal, cold, v1 grammar path (cue-free, 5A) | 3026 ms | 3497 ms | 9448 ms | `predicted_per_token_ms` 137.7 |
 | macOS host, Metal, cold, v2 grammar path (cued, 5A) | 3939 ms | 4272 ms | 5057 ms | `predicted_per_token_ms` 139.7 |
-| macOS host, Metal, sustained session (Phase 5, thermal confound) | 6478 ms | 7220 ms | 7768 ms | superseded by the cold 5A figures; not citable as the system's number (D41) |
+| macOS host, Metal, sustained session (Phase 5, thermal confound) | 6478 ms | 7220 ms | 7768 ms | superseded by the cold 5A figures; not citable as the system's number (D44, corrected from a prior mis-citation of D41) |
 | Docker container, CPU only, arm64 VM (Phase 8 spot check, n=3, `backend=inprocess`) | 9612 ms (warm) | n/a | n/a | cold first call 165657 ms; confirms D16/D18's "tens of seconds to minutes" qualitatively, n too small for a real p50/p90; not the deployed path |
-| Phase 8 e2e150 resolver latency (production, driven through the full ROS graph) | 7883 ms | 10373 ms | 12954 ms | `data/runs/e2e150_loopback.jsonl`; **not a clean measurement** (D56): the model ablation's own `llama-server` was running concurrently on the same Metal GPU for most of this suite, so these numbers are inflated by GPU contention and should not be read as a second, independent confirmation of the p90 gate result. Relative comparisons within this table are unaffected. |
+| Phase 8 e2e150 resolver latency (production, driven through the full ROS graph) | 7883 ms | 10373 ms | 12954 ms | `data/frozen/phase8_e2e150_loopback.jsonl`; **not a clean measurement** (D56): the model ablation's own `llama-server` was running concurrently on the same Metal GPU for most of this suite, so these numbers are inflated by GPU contention and should not be read as a second, independent confirmation of the p90 gate result. Relative comparisons within this table are unaffected. |
+| macOS host, Metal, cold, isolated three-model remeasure (8B, `docs/results/model_ablation_latency_isolated.txt`) | 3579-4857 ms (per path) | 4087-5399 ms | 5698-12742 ms | phi3-mini traffic-weighted p90 4494 ms, a second GPU-isolated confirmation of the 5A figure (3737 ms); the 757 ms gap is session variance, not a methodology difference. Both still miss the < 3000 ms gate. |
 
 **Gate: p90 < 3000 ms, internally set, stricter than nothing in the literature (D54).** The
 cold v1-path p90 (3497 ms) and the cue-gated traffic-weighted p90 (3737 ms, 5A) both miss it.
@@ -89,21 +102,32 @@ e2e150 suite's own resolver was concurrently active on a separate `llama-server`
 all of phi3-mini and tinyllama's rows and part of phi3.5-mini's, so, as in section 3, absolute
 latency here is inflated by GPU contention; relative ordering between models is still meaningful.
 
-| model | n | top-1 | top-3 | out-of-graph | p50 ms | p90 ms | llama-server RSS |
-|---|---|---|---|---|---|---|---|
-| phi3-mini-4k-instruct.Q4_K_M (production) | 500 | 0.650 | 0.763 | 0.0 | 5005 | 8329 | 3123 MB |
-| tinyllama-1.1b-chat-v1.0.Q4_K_M | 500 | 0.402 | 0.686 | 0.0 | 1417 | 2749 | 717 MB |
-| phi3.5-mini-instruct.Q4_K_M | 500 | 0.654 | 0.763 | 0.0 | 4427 | 7238 | 3010 MB |
+| model | n | top-1 (original) | top-1 (corrected, 8B) | top-3 | out-of-graph | p50 ms | p90 ms | llama-server RSS |
+|---|---|---|---|---|---|---|---|---|
+| phi3-mini-4k-instruct.Q4_K_M (production) | 500 | 0.650 | 0.726 | 0.763 | 0.0 | 5005 | 8329 | 3123 MB |
+| tinyllama-1.1b-chat-v1.0.Q4_K_M | 500 | 0.402 | 0.530 | 0.686 | 0.0 | 1417 | 2749 | 717 MB |
+| phi3.5-mini-instruct.Q4_K_M | 500 | 0.654 | 0.764 | 0.763 | 0.0 | 4427 | 7238 | 3010 MB |
+
+**Top-3 denominator: 455** (resolvable rows under the original `synthetic_500.jsonl` labels
+the `top_k_rooms` ranking was computed against; 45 adversarial rows excluded, stated here per
+8B/D57 finding 8, previously unstated).
 
 Phi3-mini's 0.650 top-1 here (original labels, cue-gated selection) is consistent with Phase
 5A's own original-label figure of 0.646 for the same configuration, which cross-checks this
-script against the Phase 5A result independently. Phi3.5-mini edges out phi3-mini by 0.4 points,
-within noise at n=500 and far short of D36's "promote if more than 2 points better" bar from
-Phase 5; phi3-mini remains production. TinyLlama trades about 25 points of top-1 for roughly
-3.5x lower latency and 4.3x lower RSS, consistent with its much smaller parameter count, and
-confirms the capability gap motivating the Phi-3 family choice in the first place.
+script against the Phase 5A result independently. Phi3.5-mini edges out phi3-mini by 0.4 points
+on original labels, within noise at n=500 and far short of D36's "promote if more than 2 points
+better" bar from Phase 5; phi3-mini remains production. TinyLlama trades about 25 points of
+top-1 for roughly 3.5x lower latency and 4.3x lower RSS, consistent with its much smaller
+parameter count, and confirms the capability gap motivating the Phi-3 family choice.
 
-Raw data: `data/runs/model_ablation/<model>.jsonl`. Summary: `docs/results/model_ablation.json`.
+**Corrected by 8B.** Under the corrected `synthetic_500_v2.jsonl` labels, phi3.5-mini leads
+phi3-mini by 3.8 points (0.764 vs. 0.726), which clears D36's 2-point promotion bar. This is a
+measurement, not a decision: 11A.7 only measures, and no model swap is made in this pass. A
+future phase choosing production models should use the corrected-label column, not the
+original one, and should re-run session 2 calibration on the candidate before promoting it.
+
+Raw data: `data/frozen/model_ablation_<model>.jsonl`. Summary: `docs/results/model_ablation.json`,
+`docs/results/model_ablation_corrected.txt`.
 
 ## 5. e2e150 suite (Phase 8)
 
@@ -125,23 +149,88 @@ production suite specifically and "as measured" reporting for the ablations, bot
 suites share the same `build_commands()` 50-command set, so the 50-row ablations are a strict
 subset of the conditions the production suite covers at 3x the repetition.
 
+**Superseded by 8B, table kept for the record.** This table's gate-on vs. gate-off headline
+(0.772 vs. 0.080 reached-intended) is withdrawn as a navigation artifact, not a gate effect
+(D57); its spatial category's intended rooms were mislabelled for six of ten room keys; the
+grammar-off and gate-off rows below are n=50, superseded by 8B's n=150 reruns.
+
 | suite | n | success rate | gate pass rate | reached intended | false start rate | out of graph | e2e p50/p90/p99 ms | resolver p50/p90/p99 ms | nav start p50/p90 ms |
 |---|---|---|---|---|---|---|---|---|---|
 | production (grammar on, gate on, n=150) | 150 | 0.987 | 0.933 | 0.772 | 0.243 | 0 (0.000) | 9806/54620/76048 | 7883/10373/12954 | 7868/11110 |
 | grammar off, gate on (n=50) | 50 | 1.000 | 0.960 | 0.800 | 0.208 | 0 (0.000) | 9199/55687/82704 | 8426/9496/44342 | 8785/10432 |
 | gate off, threshold 0.0 (n=50) | 50 | 1.000 | 0.960 | 0.080 | **0.917** | 0 (0.000) | 25639/603918/1104027 | 3878/9611/12159 | 5971/10679 |
 
-**The gate-on vs. gate-off comparison the specification asks for (Condition B vs. Condition C)
+~~**The gate-on vs. gate-off comparison the specification asks for (Condition B vs. Condition C)
 is the headline of this table.** With the gate at its deployed threshold, 77.2% of accepted
 navigations actually reach the intended room (false start rate 24.3%). With the gate disabled,
 that collapses to 8.0% reached (false start rate 91.7%): removing the gate does not just let a
 few more wrong answers through, it makes "the robot moved somewhere" almost uncorrelated with
-"the robot moved somewhere correct." This is the core safety claim in one number.
+"the robot moved somewhere correct." This is the core safety claim in one number.~~ **Withdrawn
+(D57):** 45 of the 50 gate-off rows ended off the map while `nav_result` read `succeeded`
+(production trial 0 on the same 50 commands acted on 47 with 8 wrong; gate-off acted on 48 with
+10 wrong; the suites agree almost everywhere). The 0.080 measured a diverging loopback
+simulator, not the gate. See 8B below for the corrected comparison.
+
+### 5.1 8B corrective reruns (PLAN.md 11A.2 and 11A.4 metrics)
+
+Production rescored against the 11A.1 relabel rule (`data/frozen/e2e150_loopback_rescored.jsonl`);
+gate-off and grammar-off rerun at the full 150 each on a fresh stack and a fresh, isolated host
+`llama-server`, per 11A.4 (`data/frozen/e2e150_gate_off_8b.jsonl`,
+`data/frozen/e2e150_grammar_off_8b.jsonl`). The reach/false-start conflation above is replaced by
+separate numerators and denominators (11A.2): acted rate, wrong-room action rate, correct
+abstention, resolver correct, and reach given a correct resolution (navigation-invalid rows
+excluded, reported as a simulator health figure, not a task metric).
+
+| suite | n | acted rate | wrong-room action rate (of n / of acted) | correct abstention | resolver correct | reach given correct (valid rows) | nav_invalid |
+|---|---|---|---|---|---|---|---|
+| production (grammar on, gate on, rescored) | 150 | 0.933 (140/150) | 0.173 (26/150) / 0.186 | 0.333 (1/3) | 0.767 (115/150) | 0.921 (105/114) | 1 (0.007) |
+| grammar off (gate on, 8B rerun) | 150 | 0.960 (144/150) | 0.187 (28/150) / 0.194 | 0.000 (0/3) | 0.773 (116/150) | 1.000 (116/116) | 0 (0.000) |
+| gate off, threshold 0.0 (8B rerun) | 150 | 0.960 (144/150) | 0.187 (28/150) / 0.194 | 0.000 (0/3) | 0.773 (116/150) | 1.000 (116/116) | 0 (0.000) |
+
+Per-category wrong-room action rate:
+
+| suite | direct | alias | negation | abbreviation | spatial |
+|---|---|---|---|---|---|
+| production (rescored) | 0.000 (0/30) | 0.000 (0/30) | 0.033 (1/30) | 0.000 (0/30) | 0.833 (25/30) |
+| grammar off (8B) | 0.000 (0/30) | 0.000 (0/30) | 0.100 (3/30) | 0.000 (0/30) | 0.833 (25/30) |
+| gate off (8B) | 0.000 (0/30) | 0.000 (0/30) | 0.100 (3/30) | 0.000 (0/30) | 0.833 (25/30) |
+
+**The corrected Condition B versus C result: the gate makes no measurable difference on this
+command set.** Wrong-room action rate is 0.173 with the gate on versus 0.187 with it off,
+within sampling noise of each other. 148 of 150 rows resolve to the same room whether the
+grammar is on or off. This is consistent with, and explains, finding 2 below: the wrong
+answers the gate would need to catch are themselves calibrated at 0.90-0.95 confidence, above
+the 0.85 threshold, so there is almost nothing in this command set for the gate to catch.
+**Reported as measured, with no pass/fail threshold attached, per 11A.4's instruction that
+whatever the comparison shows is the result.**
+
+**Finding 2: the gate passes wrong rooms at high confidence on relational commands.** 26 of the
+140 production commands that passed the gate went to a room other than the intended one, 25 of
+them `spatial`, at calibrated confidence 0.90 to 0.95; against this, Phase 7's session 2 false
+pass rate is 0.0426 (section 2). The offline comparison in `docs/results/offline_gate_comparison.md`
+places this beside the two sets the gate was tuned against: on the corrected 500 benchmark the
+gate-on wrong-room action rate is 0.056 (of n) vs. 0.268 off, and on session 2 it is 0.020 vs.
+0.290, both showing the gate doing real work. e2e150's spatial commands are specifically the
+case where it does not.
+
+**Finding 4: spatial resolution nearly fails on unambiguous commands.** Rescored against the
+corrected labels, 2 of 30 production spatial rows are correct (1 of 30 under the original
+inverted labels). Phase 5A's 0.615 `spatial` figure in section 1 came mostly from correct
+abstention on rows relabelled to `none`; its original-label figure was 0.215.
+
+**11A.6 calibrator diagnostic** (`docs/results/calibrator_diagnostic_e2e150.txt`): wrong passes
+have lower mean `raw_confidence` (0.904 vs. 0.955) and higher mean `token_entropy` and
+`edit_distance` than correct passes, but all four features' ranges overlap substantially
+(e.g. `raw_confidence` wrong max 0.95 equals correct min 0.90); the wrong spatial passes are
+not cleanly separable on any single feature without retraining, which was not done. This is
+evidence against relaxing the false-pass bound in 16A O2 to 0.15: the problem on this command
+set is not a threshold that is too strict, it is that wrong answers already carry threshold-
+clearing confidence.
 
 **The gate-off suite's e2e latency numbers are not a clean measurement of nominal drive time**
-and should not be read as "the system is this slow without the gate." `data/runs/
-e2e150_gate_off.jsonl` shows 16 of 50 rows (32%) taking 60 s to over 20 minutes, and the Nav2
-log for that window (`/tmp/launch2.log`, not committed) shows long alternating `spin`/`backup`
+and should not be read as "the system is this slow without the gate." `data/frozen/
+phase8_e2e150_gate_off.jsonl` shows 16 of 50 rows (32%) taking 60 s to over 20 minutes, and the
+Nav2 log for that window (`/tmp/launch2.log`, not committed) shows long alternating `spin`/`backup`
 recovery-behavior loops, not a single slow drive. Grammar-off's e2e p99 (82.7 s) and the
 production suite's own (76.0 s) also exceed what distance alone explains, pointing at the same
 mechanism to a lesser degree: all three suites were run back to back against one continuous
@@ -157,20 +246,46 @@ loopback sim (or relaunch the stack) between suites; that is recorded as an open
 Phase 9 rather than redone here, since the false-start-rate comparison above, which does not
 depend on absolute drive time, already carries the DoD's point.
 
-Raw data: `data/runs/e2e150_loopback.jsonl` (production), `data/runs/e2e150_grammar_off.jsonl`,
-`data/runs/e2e150_gate_off.jsonl`. Bags: `data/bags/e2e150_production/` (production suite only;
-the two 50-row ablations ran with `--no-bag` to save time, per D56).
+**8B's gate-off and grammar-off reruns relaunched a fresh stack per suite (11A.3) and resolved
+this**, confirming it was a measurement artifact: 0 of 150 rows in either 8B rerun are
+`nav_invalid` (final pose outside the map bounds, read from the map YAML), and the gate-off
+rerun's e2e p50/p90/p99 (4271/43232/53168 ms, `data/frozen/e2e150_gate_off_8b.jsonl`) no longer
+shows the earlier run's multi-minute tail. An off-map guard (stop after three consecutive
+invalid rows) is implemented in `scripts/run_trials.py` in case a future rerun diverges again.
+
+### 5.2 Offline Condition B versus C, where the gate has something to catch (PLAN.md 11A.5)
+
+No inference: the cached `phase5a_full500.jsonl` (features reconstructed through the deployed
+calibrator) and `calibration_session2_trials.jsonl` (recalibrated the same way, since it was
+collected with `calibrator_loaded=False`), re-gated at 0.85 vs. 0.0. Full table and per-category
+breakdown: `docs/results/offline_gate_comparison.md`.
+
+| set | gate on (0.85), wrong-room action rate | gate off (0.0), wrong-room action rate |
+|---|---|---|
+| Corrected 500 benchmark | 0.056 (28/500) | 0.268 (134/500) |
+| Session 2 calibration trials | 0.020 (2/100), false pass 0.043 of acted (reproduces Phase 7's reported 0.0426) | 0.290 (29/100) |
+
+Both sets show the gate reducing the wrong-room action rate by roughly a factor of 5; e2e150
+(section 5.1) does not, because its wrong spatial passes already clear the threshold.
+
+Raw data (Phase 8, superseded tables above): `data/frozen/phase8_e2e150_loopback.jsonl`,
+`data/frozen/phase8_e2e150_grammar_off.jsonl`, `data/frozen/phase8_e2e150_gate_off.jsonl`.
+8B reruns: `data/frozen/e2e150_gate_off_8b.jsonl`, `data/frozen/e2e150_grammar_off_8b.jsonl`,
+`data/frozen/e2e150_loopback_rescored.jsonl`. Bags: `data/bags/e2e150_production/` (production
+suite only; the two 50-row Phase 8 ablations and the two 8B reruns all used `--no-bag`, per
+D56 and MANIFEST.md).
 
 ## 6. Specification evaluation metrics table (filled in)
 
 | Specification metric | Measured | Source |
 |---|---|---|
+| Resolver top-3, corrected 500 benchmark | 0.868, against both >= 0.85 and the Review 2 table's 0.97 (D58) | section 1 |
 | Out of graph rate, grammar on | 0% (structural) | section 1, section 5 |
-| Out of graph rate, grammar off | 0/50 on the e2e150 ablation (D56: n=50, too small to confirm or refute D24's 1.0%/500 figure on its own); 1.0% (5/500) on the Phase 4 full-500 study | section 5, D24 |
+| Out of graph rate, grammar off | 0/150 on the 8B rerun (section 5.1), 0/50 on the superseded Phase 8 ablation; 1.0% (5/500) on the Phase 4 full-500 study | section 5, D24 |
 | Gated end-to-end accuracy | 0.72 (provisional, D53) | section 2 |
-| Resolver latency p90 (deployed backend) | 3497-4272 ms cold (5A, isolated); 7883-10373 ms under Phase 8's concurrent-GPU-load measurement (not citable against the gate, see section 3) | section 3 |
+| Resolver latency p90 (deployed backend) | 3497-4272 ms cold (5A, isolated); 4494 ms cold (8B, isolated remeasure, a second confirmation); 7883-10373 ms under Phase 8's concurrent-GPU-load measurement (not citable against the gate, see section 3) | section 3 |
 | 150-run e2e validation, grammar on | 0/150 out-of-graph outputs (required, met) | section 5 |
-| Gate on vs. gate off reached-intended rate | 0.772 (gate on) vs. 0.080 (gate off) | section 5 |
+| Gate on vs. gate off, e2e150 wrong-room action rate | 0.173 (gate on, rescored) vs. 0.187 (gate off, 8B rerun): no measurable difference (8B, section 5.1). Supersedes the withdrawn 0.772 vs. 0.080 reached-intended figure (D57), which measured a diverging simulator |
 
 This table reproduces the shape of the metrics table in `docs/reference/Review_2_Phase_2.docx`,
 which was drafted inside this project and never approved at Review 2 (D54); its numbers carry
@@ -203,17 +318,24 @@ document's table.
   should weigh this against an external audit rather than take either defence as dispositive.
 - **One operator, one goal at a time (D46).** The `/semantic_resolution_result` side channel
   correlates by command text, not a goal ID; concurrent identical-text goals are unsupported.
-- **Un-reset loopback session across the three e2e150 suites (D56).** 250 real `NavigateToPose`
-  goals were sent to one continuous launch of `semantic_nav.launch.py` with no pose reset between
-  suites; Nav2 recovery-behaviour loops (`spin`/`backup` cycling, visible in the uncommitted
-  launch log) inflate the e2e latency tails reported in section 5, most severely for gate-off.
-  The false-start-rate comparison (0.772 vs. 0.080 reached-intended) does not depend on absolute
-  timing and is unaffected; absolute e2e latency figures for the ablation suites should not be
-  read as the system's nominal drive time. Resetting between suites is an open risk for Phase 9.
-- **Model ablation latency measured under concurrent GPU load (D56).** The Phase 8 model
-  ablation table's `p50_ms`/`p90_ms` columns were collected while the e2e150 production and
-  grammar-off suites were running their own `llama-server` concurrently on the same Metal GPU.
-  Relative ordering between the three models is still meaningful; absolute values should not be
-  compared against Phase 3/5A's isolated cold-latency figures or the 3000 ms gate.
-- **Grammar-off and gate-off ablations ran at n=50, not n=150 (D56).** A budget tradeoff given
-  the production suite's own ~3-hour wall-clock time; see section 5.
+- **Un-reset loopback session across the three e2e150 suites (D56), resolved by 8B.** Phase 8
+  sent 250 real `NavigateToPose` goals to one continuous launch with no pose reset between
+  suites; Nav2 recovery-behaviour loops inflated the e2e latency tails, most severely for
+  gate-off, and the resulting 0.772 vs. 0.080 reached-intended figure was withdrawn as a
+  simulator artifact (D57), not a measure of absolute drive time as this note originally said.
+  8B relaunches a fresh stack per suite (11A.3) and adds an off-map guard; the reruns show 0
+  navigation-invalid rows in either 150-row suite (section 5.1).
+- **Model ablation latency measured under concurrent GPU load (D56), partially resolved by
+  8B.** The Phase 8 model ablation table's `p50_ms`/`p90_ms` columns were collected under GPU
+  contention; relative ordering between the three models is still meaningful, but absolute
+  values should not be compared against Phase 3/5A's isolated cold-latency figures or the 3000
+  ms gate. 8B adds an isolated remeasure of all three models (section 3); the model ablation's
+  own `p50`/`p90` columns in section 4 are unchanged and still contention-affected.
+- **Grammar-off and gate-off ablations ran at n=50, not n=150 (D56), resolved by 8B.** Both
+  reran at the full 150 on an isolated GPU and a fresh stack (section 5.1).
+- **Resolver top-3 target history undocumented until 8B (D58).** The gate was 0.97 (Review 2
+  table, plan v1), then 0.88 (v2 redraft), then 0.85 (5A plan), with no deviation recorded for
+  either change. Both 0.85 and 0.97 are now reported against the measured 0.868 in section 1.
+- **e2e150 spatial category mislabelled for six of ten room keys until 8B (D57/D59).** The
+  suite checked the wrong traversal direction for "room to the right/left of X" queries; the
+  frozen correction and its rescore are in section 1 and section 5.1.

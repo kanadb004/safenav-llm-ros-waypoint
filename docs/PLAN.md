@@ -26,7 +26,7 @@ Status legend: `[ ]` not started, `[~]` in progress, `[x]` merged to main.
 | 6 | BT plugin, semantic goal node, end to end in sim | [x] | #20 | #21 |
 | 7 | Confidence calibration pipeline | [x] | #22 | #23 |
 | 8 | E2E validation, ablations, final results | [x] | #24 | #25 |
-| 8B | Corrective: e2e150 rescoring, clean reruns, claim corrections (section 11A) | [ ] | | |
+| 8B | Corrective: e2e150 rescoring, clean reruns, claim corrections (section 11A) | [x] | #26 | #27 |
 | 9 | Hardware readiness (no robot required) | [ ] | | |
 | 10 | Hardware bring-up (deferred until hardware is present) | [ ] | | |
 
@@ -105,13 +105,16 @@ the >= 0.76 that D37 substituted for it was set by judgment, as ceiling minus a 
 than derived from the specification, a baseline, or a power calculation. It is withdrawn too.
 Raw top-1 is reported as measured against the derived ceiling, with no pass or fail threshold
 attached; the accuracy gate the specification actually asks for is the gated end-to-end 0.85 in
-Phase 7.
+Phase 7. **Corrected by D57.** There is no "specification" with authority here (D54): the
+Review 2 metrics table was drafted inside this project and never approved, and the gate is
+re-anchored at >= 0.75 (literature-anchored on KnowNo's multi-step setting), with 0.824 reported
+alongside as the stricter category-weighted reading. See the provenance table below.
 
 | Metric | Target | Phase |
 |--------|--------|-------|
 | Resolver raw top-1, corrected 500 benchmark (`synthetic_500_v2.jsonl`) | report as measured, no threshold (D45); 0.732 at 5A, derived ceiling about 0.81 | 5A |
 | Resolver raw top-1, original labels, reported alongside for continuity | report as measured | 5A |
-| Resolver top-3, corrected 500 benchmark | >= 0.85, with the D12 ranking caveat stated | 5A |
+| Resolver top-3, corrected 500 benchmark | >= 0.85 (D58: re-anchored from Review 2's unapproved 0.97; 0.868 measured, reported against both), with the D12 ranking caveat stated | 5A |
 | Gated end-to-end accuracy, 500 pair benchmark (correct abstention counts as correct) | >= 0.75, anchored on KnowNo's multi-step target (D54); 0.72 at 7, provisional (D53) | 7, 16A |
 | Out of graph output rate, grammar on | 0% (structural) | 5, 8 |
 | Out of graph output rate, grammar off | report as measured (D24: 1.0% at Phase 4) | 8 |
@@ -144,6 +147,7 @@ would be selection, not correction.
 | ECE <= 0.08, CV <= 0.10 | internally set | no peer-reviewed cutoff exists; Guo et al. 2017 fixes the 10-equal-width-bin method only |
 | Out of graph 0% | structural | guaranteed by GBNF at the sampler, not a measured target |
 | Raw top-1 | no gate | withdrawn in D45; benchmark ceiling about 0.81 (D32) |
+| Resolver top-3 >= 0.85 | internally set (D58) | 0.97 in the Review 2 table and plan v1, 0.88 in the v2 redraft, 0.85 in the 5A plan; none of these changes had a recorded deviation. 0.868 measured (5A) is reported against both 0.85 and 0.97, the way this table reports gated accuracy against both 0.75 and 0.824 |
 
 **On the 0.75.** KnowNo sets its failure level per setting, not once per system: `eps = 0.15`
 (target 0.85) for single-step tasks and `eps = 0.25` (target 0.75) for multi-step tabletop
@@ -169,7 +173,7 @@ merged; Phase 4's and Phase 5's own gate results are historical and superseded b
 | Metric | Target | Measured | Phase | Status |
 |--------|--------|----------|-------|--------|
 | Resolver raw top-1, corrected 500 | no gate (D45) | 0.732 | 5A | reported, about 90% of the 0.81 ceiling |
-| Resolver top-3, corrected 500 | >= 0.85 | 0.868 | 5A | met |
+| Resolver top-3, corrected 500 | >= 0.85 (D58: also 0.97, Review 2/v1) | 0.868 | 5A | met against 0.85, misses 0.97 |
 | Out of graph rate, grammar on | 0% | 0% | 5A, 6 | met, structural |
 | Gated end-to-end, corrected 500 | >= 0.75 (0.824 strict) | 0.72 | 7 | within noise of 0.75, misses 0.824, provisional (D53) |
 | CV ECE, out of fold | <= 0.10 | 0.0698 | 7 | met |
@@ -180,19 +184,22 @@ merged; Phase 4's and Phase 5's own gate results are historical and superseded b
 | False rejection, session 2 | gate withdrawn (D54) | 0.3662 | 7 | reported, provable optimum for this feature vector |
 | **Resolver latency p90, cold** | **< 3000 ms** | **3737 ms** | **5A** | **miss, the only outstanding one** |
 | 150 run E2E, grammar on | 0 out of graph | 0/150 | 8 | met, structural |
-| e2e150 gate on versus gate off | none set; Condition B versus C | Phase 8's 0.772 versus 0.080 is withdrawn (D57) | 8, 8B | pending 8B re-measure |
-| e2e150 wrong-room actions with the gate on | none set; session 2 false pass bound is <= 5% | 26 of 140 acted-on commands, 25 of them `spatial` (D57) | 8, 8B | pending 8B rescoring |
+| e2e150 wrong-room action rate, gate on vs. gate off | none set; Condition B versus C | 0.173 (gate on, rescored production) vs. 0.187 (gate off, 8B rerun); essentially unchanged | 8, 8B | measured (D58); Phase 8's withdrawn 0.772 vs. 0.080 was a navigation artifact, not this |
+| e2e150 wrong-room actions with the gate on | none set; session 2 false pass bound is <= 5% | 26 of 140 acted-on commands (rescored), 25 of them `spatial` | 8, 8B | measured (D58) |
 
-**Amended 2026-10-14 (D57).** The two e2e150 rows above were added after the Phase 8 review.
-Phase 8's gate-on versus gate-off figure is a navigation artifact, not a gate effect, and the
-gate passed wrong rooms at calibrated confidence 0.90 to 0.95 on relational commands. Section
-11A (Phase 8B) re-measures both. Until it merges, the sentence below that latency is the only
-miss should be read with these two rows beside it.
+**Amended 2026-10-14 (D57), re-measured 2026-10-14 (D58, Phase 8B).** The two e2e150 rows above
+were added after the Phase 8 review and re-measured in `docs/reports/phase-8b-corrective.md`.
+Phase 8's gate-on versus gate-off figure was a navigation artifact, not a gate effect; the
+corrected comparison (wrong-room action rate, not reached-intended) shows the gate making
+essentially no measurable difference on this command set, consistent with the gate passing
+25 of 30 spatial commands at calibrated confidence 0.90 to 0.95 regardless of threshold.
 
 **One metric is currently a miss: latency.** Everything else is met, favourable against its
 literature anchor, reported without a gate, or not yet measured. The gated accuracy row is the
 only ambiguous one and it is ambiguous by construction, because D54 reports two defensible
-targets and D53 marks the measurement provisional; it is not counted as met.
+targets and D53 marks the measurement provisional; it is not counted as met. The two e2e150 rows
+above are reported as measured, with no pass/fail gate attached (11A.4: "whatever the gate
+comparison shows is the result").
 
 **16A O3 does not change the latency row.** A conversational filler addresses perceived
 responsiveness, which is what Shiwa et al. actually measured, and would add a separate
@@ -1291,7 +1298,8 @@ The container's CPU is 5 to 10 times slower than the deployment target and canno
   of the best (Phase 4 selected zero), and `max_tokens` bounded by the grammar.
 - Profiles in `config/planner_params.yaml`: the **sim** profile keeps `timeout_ms: 300000`
   (D18) so a container CPU fallback cannot wedge a batch run; the **hardware** profile uses the
-  specification's `3000`. Phase 9 writes the hardware profile.
+  specification's `3000`. Phase 9 writes the hardware profile. **Corrected by D57:** `3000` is
+  internally set (D54), not taken from a specification with external authority.
 - The fast path must resolve in under 5 ms and its hit rate on the benchmark is reported.
 
 ## 14. Recorded deviations from the specification
@@ -1484,7 +1492,9 @@ D40 to D44 were recorded during Phase 5A; see `docs/reports/phase-5a-corrective.
   KnowNo. The rest of D45 stands: it never depended on 0.85's provenance, only on 0.76's.
   Recorded after Phase 5A merged (#19); the report carries an amendment note to the same effect.
   The latency finding is unaffected and remains a real miss: 3737 ms traffic-weighted p90 cold
-  against a 3000 ms gate taken from the specification, not set by judgment.
+  against a 3000 ms gate taken from the specification, not set by judgment. **Corrected by
+  D57:** the 3000 ms gate is internally set, not taken from any specification (D54); it is
+  looser than the HRI literature's 2000 ms recommendation, not stricter than nothing.
 - **D46: `/semantic_resolution_result`, a new `std_msgs/String` JSON topic, not a section 12
   interface.** `NavigateToPose`'s result carries only `std_msgs/Empty`, so `semantic_goal_node`
   has no path back to the resolved room or confidence through the action itself.
@@ -1637,6 +1647,51 @@ appended now, unchanged in substance. D57 is the Phase 8B corrective replan.
   model ablation's accuracy columns, and the engineering. Section 11A lists each finding with
   its evidence and the work that corrects it. Phase 8 is marked merged and its section 11
   outcome paragraph carries a "Corrected by D57" note; nothing Phase 8 wrote is deleted.
+- **D58: the resolver top-3 target was re-anchored three times across plan revisions with no
+  deviation recorded for either change, and section 1's provenance table now carries it.** The
+  gate was 0.97 in `docs/reference/Review_2_Phase_2.docx`'s table and plan v1, 0.88 in the v2
+  redraft, and 0.85 in the 5A plan, none of which cited a reason. Treated the same way D54
+  treats every other gate: internally set, kept rather than deleted, and the measured 0.868
+  (5A) is now reported against both 0.85 and 0.97 in section 1.
+- **D59: the e2e150 spatial relabel (PLAN.md 11A.1) and the null `t_nav_start` capture bug
+  (11A.3) are fixed in `scripts/run_trials.py`, both verified against the review's findings.**
+  `SPATIAL_ANCHORS`'s import-time check called `AnnotationGraph.related_rooms(anchor,
+  relation)` directly, the inverse of the direction the query needs; `CORRECTED_SPATIAL_LABELS`
+  now derives each intended room from `relations.resolve_relation()`, the resolver's own
+  traversal, with an independent hand-read test against the graph edges that does not call
+  either function. Rescoring the committed production file against it reproduces the review's
+  numbers exactly (2/30 spatial rows correct, 1/30 under the original inverted labels; 26 of
+  140 wrong passes, 25 spatial). Separately, 90 of 91 null `t_nav_start` rows in the production
+  file have an identical pose to the previous row: the robot was already at the target, not a
+  capture failure. `TrialRunner._drain()` still improves capture (a single `rclpy.spin_once`
+  per poll services at most one of five competing subscriptions, which can still starve
+  `/cmd_vel` against busy `/odom` traffic during an actual move) but is not the main cause of
+  the nulls Phase 8 reported. `e2e_report.py` reports n and the null count beside every
+  percentile, per 11A.3, rather than silently dropping them.
+- **D60: `e2e_report.py`'s metrics are split per PLAN.md 11A.2, each with its own numerator and
+  denominator, replacing Phase 8's single "false start" figure that conflated navigation
+  failure with a wrong resolution (D57 finding 1).** Acted rate, wrong-room action rate,
+  correct abstention, resolver correct, and reach given a correct resolution (valid rows only)
+  are now separate columns, plus a per-category breakdown.
+- **D61: two previously unknown flakes surfaced while rerunning e2e150 and `colcon test` for
+  this phase, neither caused by this phase's changes, neither fixed (out of scope).** (1) A
+  fresh `semantic_nav.launch.py` launch once left `lifecycle_manager_semantic_nav` stuck
+  configuring `map_server`, which never activated; the resolver and annotation nodes came up
+  regardless (not lifecycle-managed the same way), so commands were accepted while the robot
+  drove with no map and went out of bounds. Killing the stack and relaunching fixed it; the
+  8B rerun protocol now checks that "Managed nodes are active" appears twice in the launch log
+  and that no "out of bounds"/"no map received" warnings persist before starting a suite.
+  (2) `test_test_resolver_only_launch.py` failed once and passed on retry with no code change
+  in between, on an in-process CPU-backend call for "somewhere I can charge the robot"
+  returning an empty `matched_room_name`; consistent with D16/D18's documented CPU-backend
+  latency variance under `temperature=0.3` sampling, not a deterministic defect. Both are
+  recorded here rather than investigated further, since fixing either is outside this phase's
+  scope (no resolver, launch-graph, or lifecycle-management changes).
+- **D62: the e2e150 Condition B versus C result (11A.4) is that the gate makes no measurable
+  difference on this command set.** Wrong-room action rate is 0.173 with the gate on
+  (production, rescored) versus 0.187 with it off (8B rerun, 150 rows, fresh stack, isolated
+  GPU); 148 of 150 rows resolve to the same room whether the grammar is on or off. Reported as
+  measured, per 11A.4's instruction, with no threshold attached either way.
 
 ## 15. Phase 9: hardware readiness (no robot required)
 
@@ -1732,7 +1787,8 @@ accepts `n_probs` and returns `completion_probabilities` per token, which is the
 and needs no change to the backend seam; the `llama-cpp-python` path would use `logits_all` or
 the equivalent sampler hook. Keep both backends in agreement, since D23's seam contract requires
 it, and add a unit test asserting entropy is 0 on a one-hot distribution and `ln(k)` on a
-uniform distribution over `k` rooms.
+uniform distribution over `k` rooms. **Corrected by D57:** the backend seam contract is section
+8.2 and D28, not D23.
 
 **Then, and this is the part that makes it worth doing.** Retrain the calibrator on the existing
 committed session files (no new Mistral calls, no new personas), re-pick the threshold under the

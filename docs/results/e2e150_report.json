@@ -2,76 +2,259 @@
   {
     "label": "production (grammar on, gate on)",
     "n": 150,
-    "success_rate": 0.9866666666666667,
-    "gate_pass_rate": 0.9333333333333333,
-    "reached_intended_rate": 0.7718120805369127,
-    "false_start_rate": 0.24285714285714285,
+    "acted_rate": 0.9333333333333333,
+    "acted_num_den": [
+      140,
+      150
+    ],
+    "wrong_room_action_rate": 0.17333333333333334,
+    "wrong_room_action_num_den": [
+      26,
+      150
+    ],
+    "wrong_room_action_rate_of_acted": 0.18571428571428572,
+    "correct_abstention_rate": 0.3333333333333333,
+    "correct_abstention_num_den": [
+      1,
+      3
+    ],
+    "resolver_correct_rate": 0.7666666666666667,
+    "resolver_correct_num_den": [
+      115,
+      150
+    ],
+    "reach_given_correct_rate": 0.9210526315789473,
+    "reach_given_correct_num_den": [
+      105,
+      114
+    ],
+    "nav_invalid_count": 1,
+    "nav_invalid_rate": 0.006666666666666667,
+    "nav_result_succeeded_rate": 0.9866666666666667,
     "out_of_graph_count": 0,
     "out_of_graph_rate": 0.0,
     "e2e_ms": {
       "p50": 9806.1466225,
       "p90": 54619.6664301,
-      "p99": 76047.86299616993
+      "p99": 76047.86299616993,
+      "n": 150
     },
     "resolver_ms": {
       "p50": 7882.753232499454,
       "p90": 10372.657067101682,
-      "p99": 12953.99712025137
+      "p99": 12953.99712025137,
+      "n": 148
     },
     "time_to_nav_start_ms": {
       "p50": 7868.1833789996745,
       "p90": 11109.542171998328,
-      "p99": 14606.196385800282
+      "p99": 14606.196385800282,
+      "n": 71
+    },
+    "time_to_nav_start_null_count": 79,
+    "by_category": {
+      "direct": {
+        "n": 30,
+        "acted_rate": 1.0,
+        "wrong_room_action_rate": 0.0,
+        "wrong_room_of_acted": 0.0
+      },
+      "alias": {
+        "n": 30,
+        "acted_rate": 1.0,
+        "wrong_room_action_rate": 0.0,
+        "wrong_room_of_acted": 0.0
+      },
+      "negation": {
+        "n": 30,
+        "acted_rate": 0.9,
+        "wrong_room_action_rate": 0.03333333333333333,
+        "wrong_room_of_acted": 0.037037037037037035
+      },
+      "abbreviation": {
+        "n": 30,
+        "acted_rate": 0.9,
+        "wrong_room_action_rate": 0.0,
+        "wrong_room_of_acted": 0.0
+      },
+      "spatial": {
+        "n": 30,
+        "acted_rate": 0.8666666666666667,
+        "wrong_room_action_rate": 0.8333333333333334,
+        "wrong_room_of_acted": 0.9615384615384616
+      }
     }
   },
   {
     "label": "grammar off (gate on)",
-    "n": 50,
-    "success_rate": 1.0,
-    "gate_pass_rate": 0.96,
-    "reached_intended_rate": 0.8,
-    "false_start_rate": 0.20833333333333334,
+    "n": 150,
+    "acted_rate": 0.96,
+    "acted_num_den": [
+      144,
+      150
+    ],
+    "wrong_room_action_rate": 0.18666666666666668,
+    "wrong_room_action_num_den": [
+      28,
+      150
+    ],
+    "wrong_room_action_rate_of_acted": 0.19444444444444445,
+    "correct_abstention_rate": 0.0,
+    "correct_abstention_num_den": [
+      0,
+      3
+    ],
+    "resolver_correct_rate": 0.7733333333333333,
+    "resolver_correct_num_den": [
+      116,
+      150
+    ],
+    "reach_given_correct_rate": 1.0,
+    "reach_given_correct_num_den": [
+      116,
+      116
+    ],
+    "nav_invalid_count": 0,
+    "nav_invalid_rate": 0.0,
+    "nav_result_succeeded_rate": 1.0,
     "out_of_graph_count": 0,
     "out_of_graph_rate": 0.0,
     "e2e_ms": {
-      "p50": 9199.178789000001,
-      "p90": 55686.853144099994,
-      "p99": 82704.12152966991
+      "p50": 5005.245995,
+      "p90": 51188.963847700004,
+      "p99": 60078.679080669994,
+      "n": 150
     },
     "resolver_ms": {
-      "p50": 8425.741941500746,
-      "p90": 9495.557745400947,
-      "p99": 44342.28495462799
+      "p50": 4708.892085000116,
+      "p90": 5641.5625609020935,
+      "p99": 37934.777376487116,
+      "n": 150
     },
     "time_to_nav_start_ms": {
-      "p50": 8784.957171001224,
-      "p90": 10432.1397968979,
-      "p99": 64428.12382959072
+      "p50": 5059.856752995984,
+      "p90": 5822.007286403095,
+      "p99": 36799.519166160346,
+      "n": 59
+    },
+    "time_to_nav_start_null_count": 91,
+    "by_category": {
+      "direct": {
+        "n": 30,
+        "acted_rate": 1.0,
+        "wrong_room_action_rate": 0.0,
+        "wrong_room_of_acted": 0.0
+      },
+      "alias": {
+        "n": 30,
+        "acted_rate": 1.0,
+        "wrong_room_action_rate": 0.0,
+        "wrong_room_of_acted": 0.0
+      },
+      "negation": {
+        "n": 30,
+        "acted_rate": 1.0,
+        "wrong_room_action_rate": 0.1,
+        "wrong_room_of_acted": 0.1
+      },
+      "abbreviation": {
+        "n": 30,
+        "acted_rate": 0.9,
+        "wrong_room_action_rate": 0.0,
+        "wrong_room_of_acted": 0.0
+      },
+      "spatial": {
+        "n": 30,
+        "acted_rate": 0.9,
+        "wrong_room_action_rate": 0.8333333333333334,
+        "wrong_room_of_acted": 0.9259259259259259
+      }
     }
   },
   {
     "label": "gate off (threshold 0.0)",
-    "n": 50,
-    "success_rate": 1.0,
-    "gate_pass_rate": 0.96,
-    "reached_intended_rate": 0.08,
-    "false_start_rate": 0.9166666666666666,
+    "n": 150,
+    "acted_rate": 0.96,
+    "acted_num_den": [
+      144,
+      150
+    ],
+    "wrong_room_action_rate": 0.18666666666666668,
+    "wrong_room_action_num_den": [
+      28,
+      150
+    ],
+    "wrong_room_action_rate_of_acted": 0.19444444444444445,
+    "correct_abstention_rate": 0.0,
+    "correct_abstention_num_den": [
+      0,
+      3
+    ],
+    "resolver_correct_rate": 0.7733333333333333,
+    "resolver_correct_num_den": [
+      116,
+      150
+    ],
+    "reach_given_correct_rate": 1.0,
+    "reach_given_correct_num_den": [
+      116,
+      116
+    ],
+    "nav_invalid_count": 0,
+    "nav_invalid_rate": 0.0,
+    "nav_result_succeeded_rate": 1.0,
     "out_of_graph_count": 0,
     "out_of_graph_rate": 0.0,
     "e2e_ms": {
-      "p50": 25639.2365605,
-      "p90": 603918.4194084001,
-      "p99": 1104026.6141467795
+      "p50": 4271.3204605,
+      "p90": 43231.949589699994,
+      "p99": 53167.728120169995,
+      "n": 150
     },
     "resolver_ms": {
-      "p50": 3877.7246060017205,
-      "p90": 9610.751262799751,
-      "p99": 12158.84252834981
+      "p50": 3796.790106000117,
+      "p90": 5159.999927297757,
+      "p99": 6019.283215498945,
+      "n": 150
     },
     "time_to_nav_start_ms": {
-      "p50": 5970.758252999076,
-      "p90": 10678.712579800776,
-      "p99": 13468.91434647929
+      "p50": 4587.425250996603,
+      "p90": 5903.656786397914,
+      "p99": 6069.310120780283,
+      "n": 59
+    },
+    "time_to_nav_start_null_count": 91,
+    "by_category": {
+      "direct": {
+        "n": 30,
+        "acted_rate": 1.0,
+        "wrong_room_action_rate": 0.0,
+        "wrong_room_of_acted": 0.0
+      },
+      "alias": {
+        "n": 30,
+        "acted_rate": 1.0,
+        "wrong_room_action_rate": 0.0,
+        "wrong_room_of_acted": 0.0
+      },
+      "negation": {
+        "n": 30,
+        "acted_rate": 1.0,
+        "wrong_room_action_rate": 0.1,
+        "wrong_room_of_acted": 0.1
+      },
+      "abbreviation": {
+        "n": 30,
+        "acted_rate": 0.9,
+        "wrong_room_action_rate": 0.0,
+        "wrong_room_of_acted": 0.0
+      },
+      "spatial": {
+        "n": 30,
+        "acted_rate": 0.9,
+        "wrong_room_action_rate": 0.8333333333333334,
+        "wrong_room_of_acted": 0.9259259259259259
+      }
     }
   }
 ]

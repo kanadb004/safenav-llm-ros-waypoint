@@ -138,7 +138,17 @@ See `docs/results/RESULTS.md` for the full set. Headline: resolver raw top-1 0.7
 corrected 500 benchmark (no gate, D45; derived ceiling about 0.81), gated end-to-end accuracy
 0.72 (provisional, D53) against a literature-anchored target of 0.75, calibrated ECE 0.073
 (<= 0.08, met), resolver latency p90 3497-4272 ms cold (target < 3000 ms, the one outstanding
-gate miss).
+gate miss; a second isolated remeasure in Phase 8B gets 4494 ms, confirming the miss).
+
+**Phase 8B corrective pass** (`docs/reports/phase-8b-corrective.md`) found and fixed two
+Phase 8 measurement errors: the e2e150 `spatial` category's intended rooms were mislabelled
+for six of ten room keys (the wrong graph-traversal direction), and the headline "gate on vs.
+gate off" figure was a loopback-simulator artifact, not a gate effect. Rescored and rerun at
+the full 150, spatial resolution is 2/30 correct, and the gate makes no measurable difference
+in wrong-room action rate on this command set (0.173 vs. 0.187), because the wrong answers it
+would need to catch already carry threshold-clearing confidence. The gate does measurably
+reduce wrong-room actions on the two sets it was tuned against (the 500 benchmark and session
+2 calibration trials), which Phase 8B reports alongside as the honest comparison.
 
 ## Limitations
 

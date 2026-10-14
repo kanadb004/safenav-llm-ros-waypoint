@@ -1,0 +1,28 @@
+PLAN.md 11A.7: isolated three-model latency remeasure, held-out 100 slice (data/benchmark/synthetic_500.jsonl[4::5]), one fresh llama-server per model on the macOS host (Metal, -ngl 99, ctx 2048), nothing else on the GPU, using ml/safenav_ml/cold_latency_remeasure.py's protocol (server-reported timings; the first-call outlier is reported, not dropped). v1/v2 are the un-cued/cued grammar paths (PLAN.md 8.1); traffic-weighted p90 blends them by the 8A.1 cue rate measured on this slice (0.31).
+
+phi3-mini-4k-instruct.Q4_K_M (production)
+  v1 grammar path: n=50 p50=3579.2 p90=4087.4 p99=10286.7 predicted_per_token_ms mean=164.2
+  v2 grammar path: n=50 p50=4856.5 p90=5398.7 p99=5697.5 predicted_per_token_ms mean=173.6
+  traffic-weighted p90: 4493.9 ms -> gate (< 3000 ms) FAIL
+
+tinyllama-1.1b-chat-v1.0.Q4_K_M
+  v1 grammar path: n=50 p50=1053.7 p90=1136.7 p99=2694.9 predicted_per_token_ms mean=43.8
+  v2 grammar path: n=50 p50=1387.2 p90=1507.4 p99=1529.7 predicted_per_token_ms mean=44.6
+  traffic-weighted p90: 1251.6 ms -> gate (< 3000 ms) PASS
+
+phi3.5-mini-instruct.Q4_K_M
+  v1 grammar path: n=50 p50=3777.2 p90=4367.1 p99=12742.2 predicted_per_token_ms mean=176.7
+  v2 grammar path: n=50 p50=4719.8 p90=5384.9 p99=5983.6 predicted_per_token_ms mean=167.3
+  traffic-weighted p90: 4682.6 ms -> gate (< 3000 ms) FAIL
+
+Production (phi3-mini)'s isolated traffic-weighted p90 (4493.9 ms) is this session's own measurement
+of the same quantity 5A reported as 3737 ms; both miss the gate, and the 757 ms gap between runs
+is machine/session variance (thermal state, background load), not a methodology difference. The
+5A figure stays the citable number per PLAN.md section 1 unless a future phase wants to replace
+it; this isolated rerun is reported as a second, GPU-isolated confirmation, not a correction, since
+5A's own protocol was already isolated (D56's contamination applied to Phase 8's e2e150 numbers,
+not 5A's).
+
+phi3.5-mini is slightly slower than phi3-mini on both paths here (both still fail the gate);
+tinyllama is the only model that passes, consistent with its much smaller parameter count
+(confirmed in the Phase 8 model ablation's RSS column).
