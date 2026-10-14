@@ -13,6 +13,8 @@ if _PKG_ROOT not in sys.path:
 from semantic_waypoint_planner.graph import AnnotationGraph  # noqa: E402
 from semantic_waypoint_planner.relations import (  # noqa: E402
     DEFAULT_CUES_PATH,
+    apply_relational_hop,
+    extract_text_anchor,
     has_relational_cue,
     load_cues,
     resolve_relation,
@@ -162,3 +164,113 @@ def test_has_relational_cue_is_case_insensitive():
 def test_has_relational_cue_accepts_explicit_cue_list():
     assert has_relational_cue("go to the north room", cues=["north"])
     assert not has_relational_cue("go to the south room", cues=["north"])
+
+
+# ---------------------------------------------------------------------------
+# Text anchor extraction (PLAN.md 11B.2, D64)
+# ---------------------------------------------------------------------------
+
+# The ten e2e150 spatial phrasings (scripts/run_trials.py's _spatial_phrase over SPATIAL_ANCHORS),
+# each with the anchor the command names in its text.
+E2E150_SPATIAL_PHRASINGS = [
+    ("Go to the room to the right of the kitchen.", "kitchen"),
+    ("Go to the room to the right of the meeting room a.", "meeting_room_a"),
+    ("Go to the room to the right of the meeting room b.", "meeting_room_b"),
+    ("Go to the room to the right of the office.", "office"),
+    ("Go to the room near the workshop.", "workshop"),
+    ("Go to the room to the right of the charging dock.", "charging_dock"),
+    ("Go to the room near the kitchen.", "kitchen"),
+    ("Go to the room near the meeting room a.", "meeting_room_a"),
+    ("Go to the room near the meeting room b.", "meeting_room_b"),
+    ("Go to the room to the left of the lab.", "lab"),
+]
+
+
+@pytest.mark.parametrize("command,expected_anchor", E2E150_SPATIAL_PHRASINGS)
+def test_extract_text_anchor_e2e150_phrasings(shipped_graph, command, expected_anchor):
+    assert extract_text_anchor(shipped_graph, command, load_cues()) == expected_anchor
+
+
+def test_extract_text_anchor_prefers_alias_over_substring_room(shipped_graph):
+    # "docking bay" is storage_room's alias; charging_dock's alias "dock" must not match inside
+    # "docking" (word boundaries), so this must not anchor on charging_dock.
+    anchor = extract_text_anchor(
+        shipped_graph, "Go to the room beside the docking bay.", load_cues()
+    )
+    assert anchor == "storage_room"
+
+
+def test_extract_text_anchor_two_edge_bearing_rooms_gives_none(shipped_graph):
+    anchor = extract_text_anchor(
+        shipped_graph, "Go to the room near the kitchen and the lab.", load_cues()
+    )
+    assert anchor is None
+
+
+def test_extract_text_anchor_sub_location_gives_none(shipped_graph):
+    # coffee_machine has no edges and cannot anchor a left/right/adjacent/near hop.
+    anchor = extract_text_anchor(
+        shipped_graph, "Go to the room near the coffee machine.", load_cues()
+    )
+    assert anchor is None
+
+
+def test_extract_text_anchor_no_cue_gives_none(shipped_graph):
+    assert extract_text_anchor(shipped_graph, "take me to the kitchen", load_cues()) is None
+
+
+# ---------------------------------------------------------------------------
+# apply_relational_hop (PLAN.md 11B.2, D64): the shared decision used by both the resolver
+# and the held-out replay.
+# ---------------------------------------------------------------------------
+
+def test_apply_relational_hop_uses_text_anchor_when_found(shipped_graph):
+    final, anchor, source, n = apply_relational_hop(
+        shipped_graph, "Go to the room to the right of the kitchen.", "right_of",
+        "meeting_room_a", True, load_cues(),
+    )
+    assert (final, anchor, source) == ("meeting_room_a", "kitchen", "text")
+    assert n == 1
+
+
+def test_apply_relational_hop_falls_back_to_model_room_with_flag_off(shipped_graph):
+    final, anchor, source, n = apply_relational_hop(
+        shipped_graph, "Go to the room to the right of the kitchen.", "right_of",
+        "meeting_room_a", False, load_cues(),
+    )
+    assert (final, anchor, source) == ("meeting_room_b", "meeting_room_a", "model")
+    assert n == 1
+
+
+def test_apply_relational_hop_falls_back_to_model_room_when_text_anchor_ambiguous(shipped_graph):
+    final, anchor, source, n = apply_relational_hop(
+        shipped_graph, "Go to the room near the kitchen and the lab.", "near",
+        "charging_dock", True, load_cues(),
+    )
+    assert source == "model"
+    assert anchor == "charging_dock"
+
+
+def test_apply_relational_hop_within_never_uses_text_anchor(shipped_graph):
+    # "the room with the coffee machine" -> {"room": "coffee_machine", "relation": "within"}.
+    # within is excluded from TEXT_ANCHOR_RELATIONS: it legitimately anchors on the sub
+    # location the model names, text extraction is never attempted.
+    final, anchor, source, n = apply_relational_hop(
+        shipped_graph, "the room with the coffee machine", "within",
+        "coffee_machine", True, load_cues(),
+    )
+    assert (final, anchor, source) == ("kitchen", "coffee_machine", "model")
+
+
+def test_apply_relational_hop_none_relation_is_a_no_op(shipped_graph):
+    final, anchor, source, n = apply_relational_hop(
+        shipped_graph, "go to the kitchen", "none", "kitchen", True, load_cues(),
+    )
+    assert (final, anchor, source, n) == ("kitchen", "kitchen", "", 0)
+
+
+def test_apply_relational_hop_non_canonical_model_room_is_a_no_op(shipped_graph):
+    final, anchor, source, n = apply_relational_hop(
+        shipped_graph, "whatever", "right_of", "none", True, load_cues(),
+    )
+    assert (final, anchor, source, n) == ("none", "none", "", 0)

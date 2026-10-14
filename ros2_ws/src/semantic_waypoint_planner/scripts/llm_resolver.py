@@ -58,6 +58,9 @@ class LlmResolverNode(Node):
         # Phase 5A (8A.1, D38): cue-free commands take the smaller v1 grammar with the hop
         # suppressed. On by default; set false only to reproduce Phase 5's unconditional v2.
         self.declare_parameter("cue_gating", True)
+        # Phase 8C (D64, PLAN.md 11B.2): on by default; false reproduces the pre-fix behaviour
+        # (the model's own room field as the hop anchor) as a regression record.
+        self.declare_parameter("text_anchor", True)
 
         annotations_path = self.get_parameter("annotations_path").value
         model_path = self._resolve_model_path(self.get_parameter("model_path").value)
@@ -88,6 +91,7 @@ class LlmResolverNode(Node):
             backend=self.get_parameter("backend").value,
             backend_url=self.get_parameter("backend_url").value,
             cue_gating=self.get_parameter("cue_gating").value,
+            text_anchor=self.get_parameter("text_anchor").value,
         )
         self.get_logger().info("model loaded")
 
@@ -200,6 +204,12 @@ class LlmResolverNode(Node):
             payload["anchor_room"] = result.anchor_room
             payload["relation"] = result.relation
             payload["n_relation_targets"] = result.n_relation_targets
+            # Phase 8C (D64, PLAN.md 11B.1): model_room is the raw room field the model emitted
+            # (anchor_room is whatever the hop actually used, text or model); anchor_source
+            # records which. Nested under relation != "none" since both are meaningless
+            # otherwise (a "none" relation has no hop and model_room == anchor_room == room).
+            payload["model_room"] = result.model_room
+            payload["anchor_source"] = result.anchor_source
         if result.grammar_version != "fast_path":
             payload["grammar_version"] = result.grammar_version
         return json.dumps(payload) if payload else ""

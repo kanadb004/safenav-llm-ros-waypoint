@@ -1,5 +1,7 @@
 """Fast path, edit distance, and feature vector tests that need no model (PLAN.md Phase 3)."""
 
+import os
+
 import pytest
 
 from semantic_waypoint_planner import resolver_core as resolver_core_module
@@ -11,6 +13,11 @@ from semantic_waypoint_planner.resolver_core import (
     features,
     min_edit_distance,
     normalize_command,
+)
+
+SHIPPED_MAP_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "maps", "room_annotations.json",
 )
 
 FIXTURE = {
@@ -172,6 +179,63 @@ def test_cue_gating_disabled_always_uses_v2(monkeypatch):
     core = ResolverCore(model_path="unused", graph=_graph(), fewshot_count=0, cue_gating=False)
     core.resolve("go to the server room", fast_path=False)
     assert fake.calls[0] == core.grammar_str
+
+
+# ---------------------------------------------------------------------------
+# Text anchor fix, resolver level (PLAN.md 11B.2, D64). Uses the shipped graph (not FIXTURE)
+# because the extraction rule needs real edges and aliases, and a backend stub pinned to a
+# "wrong" model room: the model answers the two-hop answer instead of the anchor, exactly the
+# defect 11B.0 found.
+# ---------------------------------------------------------------------------
+
+class _PinnedAnswerBackend:
+    def __init__(self, *args, **kwargs):
+        self.calls = []
+
+    def complete(self, prompt, grammar, **kwargs):
+        self.calls.append(grammar)
+        return '{"room": "meeting_room_a", "relation": "right_of", "confidence": 0.9}', 1.0, 10
+
+    def reset(self):
+        pass
+
+
+def _shipped_graph_core(monkeypatch, **core_kwargs):
+    fake = _PinnedAnswerBackend()
+    monkeypatch.setattr(resolver_core_module, "build_backend", lambda *a, **k: fake)
+    graph = AnnotationGraph.from_file(SHIPPED_MAP_PATH)
+    core = ResolverCore(model_path="unused", graph=graph, fewshot_count=0, **core_kwargs)
+    return core
+
+
+def test_text_anchor_on_resolves_from_command_text(monkeypatch):
+    core = _shipped_graph_core(monkeypatch)
+    result = core.resolve("Go to the room to the right of the kitchen.", fast_path=False)
+    assert result.room == "meeting_room_a"
+    assert result.anchor_room == "kitchen"
+    assert result.anchor_source == "text"
+    assert result.model_room == "meeting_room_a"
+
+
+def test_text_anchor_off_keeps_pre_fix_double_hop(monkeypatch):
+    core = _shipped_graph_core(monkeypatch, text_anchor=False)
+    result = core.resolve("Go to the room to the right of the kitchen.", fast_path=False)
+    assert result.room == "meeting_room_b"
+    assert result.anchor_room == "meeting_room_a"
+    assert result.anchor_source == "model"
+
+
+def test_within_relation_is_not_routed_through_text_anchor(monkeypatch):
+    fake = _PinnedAnswerBackend()
+    fake.complete = lambda prompt, grammar, **kwargs: (
+        '{"room": "coffee_machine", "relation": "within", "confidence": 0.9}', 1.0, 10
+    )
+    monkeypatch.setattr(resolver_core_module, "build_backend", lambda *a, **k: fake)
+    graph = AnnotationGraph.from_file(SHIPPED_MAP_PATH)
+    core = ResolverCore(model_path="unused", graph=graph, fewshot_count=0)
+    result = core.resolve("take me to the room with the coffee machine", fast_path=False)
+    assert result.room == "kitchen"
+    assert result.anchor_source == "model"
 
 
 def test_features_vector_order():

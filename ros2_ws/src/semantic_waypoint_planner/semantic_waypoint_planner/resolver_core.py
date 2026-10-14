@@ -16,7 +16,12 @@ from .backends import Backend, build_backend
 from .grammar import RELATION_VALUES, build_grammar, build_grammar_v1
 from .graph import AnnotationGraph
 from .prompt import DEFAULT_FEWSHOT_PATH, DEFAULT_TEMPLATE_PATH, PromptBuilder
-from .relations import DEFAULT_CUES_PATH, has_relational_cue, load_cues, resolve_relation
+from .relations import (
+    DEFAULT_CUES_PATH,
+    apply_relational_hop,
+    has_relational_cue,
+    load_cues,
+)
 
 VERB_PHRASES = ["go to", "navigate to", "head to", "take me to", "move to"]
 _WS_RE = re.compile(r"\s+")
@@ -110,6 +115,12 @@ class ResolveResult:
     anchor_room: str = ""
     relation: str = "none"
     n_relation_targets: int = 0
+    # Phase 8C (D64, PLAN.md 11B.1): ``model_room`` is the raw ``room`` field the model emitted
+    # (v1 semantics, before any hop), kept even when the hop anchors elsewhere. ``anchor_source``
+    # is "text" or "model", recording which anchor the hop actually used; "" when no hop was
+    # attempted at all (``relation == "none"`` or the model's room was not a canonical name).
+    model_room: str = ""
+    anchor_source: str = ""
     # Phase 5A (8A.1, D38): which grammar actually went to the backend. "fast_path" when no
     # LLM call was made at all.
     grammar_version: str = "v2"
@@ -173,6 +184,7 @@ class ResolverCore:
         backend_url: str = "http://host.docker.internal:8080",
         cue_gating: bool = True,
         cues_path: str = DEFAULT_CUES_PATH,
+        text_anchor: bool = True,
     ):
         self.n_ctx = n_ctx
         self.n_threads = n_threads
@@ -190,6 +202,12 @@ class ResolverCore:
         # trusting the model to emit relation: "none" on its own (section 5.1's regression).
         self.cue_gating = cue_gating
         self._cues = load_cues(cues_path) if cue_gating else []
+        # Phase 8C (D64, PLAN.md 11B.2): anchor a left/right/adjacent/near hop on the room named
+        # in the command text, when exactly one edge bearing room follows the cue, instead of
+        # trusting the model's own `room` field (which Phi-3 mini often fills with the answer,
+        # not the anchor, for these relations). Overridable so the pre-fix path stays
+        # reproducible as a regression record.
+        self.text_anchor = text_anchor
 
         self._backend: Backend = build_backend(
             backend,
@@ -297,13 +315,12 @@ class ResolverCore:
             # grammar_on=False free-form output that happens to contain one.
             relation = "none"
 
-        anchor_room = ""
-        final_room = anchor or "none"
-        n_relation_targets = 0
-        if relation != "none" and final_room != "none" and final_room in self.graph.canonical_names:
-            anchor_room = final_room
-            target, n_relation_targets = resolve_relation(self.graph, final_room, relation, command)
-            final_room = target if target is not None else "none"
+        model_room = anchor or "none"
+        final_room, anchor_room, anchor_source, n_relation_targets = apply_relational_hop(
+            self.graph, command, relation, model_room, self.text_anchor, self._cues
+        )
+        if anchor_source == "":
+            anchor_room = ""
 
         token_entropy, room_ranking = self._score_candidates(
             command, anchor or "none", raw_confidence, candidates
@@ -324,6 +341,8 @@ class ResolverCore:
             relation=relation,
             n_relation_targets=n_relation_targets,
             grammar_version=grammar_version,
+            model_room=model_room,
+            anchor_source=anchor_source,
         )
         self._apply_calibrator(result, command)
         return result
