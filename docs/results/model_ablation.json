@@ -1,0 +1,35 @@
+[
+  {
+    "model": "phi3-mini-4k-instruct.Q4_K_M",
+    "n": 500,
+    "top1": 0.65,
+    "top3": 0.7626373626373626,
+    "oog_rate": 0.0,
+    "p50_ms": 5004.971915972419,
+    "p90_ms": 8329.232549946755,
+    "rss_mb": 3122.765625,
+    "out_path": "data/runs/model_ablation/phi3-mini-4k-instruct.Q4_K_M.jsonl"
+  },
+  {
+    "model": "tinyllama-1.1b-chat-v1.0.Q4_K_M",
+    "n": 500,
+    "top1": 0.402,
+    "top3": 0.6857142857142857,
+    "oog_rate": 0.0,
+    "p50_ms": 1417.3079170286655,
+    "p90_ms": 2749.434625217691,
+    "rss_mb": 717.125,
+    "out_path": "data/runs/model_ablation/tinyllama-1.1b-chat-v1.0.Q4_K_M.jsonl"
+  },
+  {
+    "model": "phi3.5-mini-instruct.Q4_K_M",
+    "n": 500,
+    "top1": 0.654,
+    "top3": 0.7626373626373626,
+    "oog_rate": 0.0,
+    "p50_ms": 4426.942790974863,
+    "p90_ms": 7238.170566805638,
+    "rss_mb": 3009.875,
+    "out_path": "data/runs/model_ablation/phi3.5-mini-instruct.Q4_K_M.jsonl"
+  }
+]

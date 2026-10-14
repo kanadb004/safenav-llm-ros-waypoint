@@ -142,7 +142,7 @@ void SemanticGoalNode::handle_semantic_goal(const msg::SemanticGoal::SharedPtr g
 
   if (command.empty()) {
     RCLCPP_WARN(get_logger(), "empty /semantic_goal command, ignoring");
-    publish_result(command, "", 0.0, 0.0, "rejected_empty_command", 0.0);
+    publish_result(command, Resolution{}, "rejected_empty_command", 0.0);
     return;
   }
 
@@ -158,7 +158,7 @@ void SemanticGoalNode::handle_semantic_goal(const msg::SemanticGoal::SharedPtr g
   std::ofstream out(bt_path);
   if (!out) {
     RCLCPP_ERROR(get_logger(), "cannot write rendered BT XML to %s", bt_path.c_str());
-    publish_result(command, "", 0.0, 0.0, "rejected_io_error", 0.0);
+    publish_result(command, Resolution{}, "rejected_io_error", 0.0);
     return;
   }
   out << xml;
@@ -166,7 +166,7 @@ void SemanticGoalNode::handle_semantic_goal(const msg::SemanticGoal::SharedPtr g
 
   if (!nav_client_->wait_for_action_server(std::chrono::seconds(5))) {
     RCLCPP_ERROR(get_logger(), "navigate_to_pose action server not available");
-    publish_result(command, "", 0.0, 0.0, "rejected_no_action_server", 0.0);
+    publish_result(command, Resolution{}, "rejected_no_action_server", 0.0);
     return;
   }
 
@@ -206,9 +206,7 @@ void SemanticGoalNode::handle_semantic_goal(const msg::SemanticGoal::SharedPtr g
           resolutions_.erase(it);
         }
       }
-      publish_result(
-        command, resolution.resolved_room, resolution.raw_confidence,
-        resolution.calibrated_confidence, nav_result, e2e_ms);
+      publish_result(command, resolution, nav_result, e2e_ms);
     };
 
   nav_client_->async_send_goal(nav_goal, send_goal_options);
@@ -221,8 +219,17 @@ void SemanticGoalNode::handle_resolution_result(const std_msgs::msg::String::Sha
     const auto j = nlohmann::json::parse(msg->data);
     Resolution resolution;
     resolution.resolved_room = j.at("resolved_room").get<std::string>();
+    resolution.attempted_room = j.at("attempted_room").get<std::string>();
     resolution.raw_confidence = j.at("raw_confidence").get<double>();
     resolution.calibrated_confidence = j.at("calibrated_confidence").get<double>();
+    resolution.resolver_mode = j.at("resolver_mode").get<std::string>();
+    resolution.out_of_graph = j.at("out_of_graph").get<bool>();
+    resolution.token_entropy = j.at("token_entropy").get<double>();
+    resolution.reasoning = j.at("reasoning").get<std::string>();
+    resolution.success = j.at("success").get<bool>();
+    resolution.gate_passed = j.at("gate_passed").get<bool>();
+    resolution.threshold_used = j.at("threshold_used").get<double>();
+    resolution.received = true;
     const std::string command = j.at("command").get<std::string>();
     std::lock_guard<std::mutex> lock(resolutions_mutex_);
     resolutions_[command] = resolution;
@@ -261,16 +268,25 @@ void SemanticGoalNode::handle_clarification(const msg::ClarificationRequest::Sha
 }
 
 void SemanticGoalNode::publish_result(
-  const std::string & command, const std::string & resolved_room, double raw_confidence,
-  double calibrated_confidence, const std::string & nav_result, double e2e_ms) const
+  const std::string & command, const Resolution & resolution,
+  const std::string & nav_result, double e2e_ms) const
 {
   const nlohmann::json j{
     {"command", command},
-    {"resolved_room", resolved_room},
-    {"raw_confidence", raw_confidence},
-    {"calibrated_confidence", calibrated_confidence},
+    {"resolved_room", resolution.resolved_room},
+    {"attempted_room", resolution.attempted_room},
+    {"raw_confidence", resolution.raw_confidence},
+    {"calibrated_confidence", resolution.calibrated_confidence},
     {"nav_result", nav_result},
     {"e2e_ms", e2e_ms},
+    {"resolver_mode", resolution.resolver_mode},
+    {"out_of_graph", resolution.out_of_graph},
+    {"token_entropy", resolution.token_entropy},
+    {"reasoning", resolution.reasoning},
+    {"resolve_success", resolution.success},
+    {"gate_passed", resolution.gate_passed},
+    {"threshold_used", resolution.threshold_used},
+    {"resolution_received", resolution.received},
   };
   std_msgs::msg::String out;
   out.data = j.dump();

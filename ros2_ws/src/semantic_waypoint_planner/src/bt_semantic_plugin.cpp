@@ -120,25 +120,40 @@ BT::NodeStatus SemanticNavigateToPose::tick()
     return BT::NodeStatus::FAILURE;
   }
   const double calibrated_confidence = static_cast<double>(response->calibrated_confidence);
+  const bool gate_passed = response->success && calibrated_confidence >= threshold;
 
-  if (response->success && calibrated_confidence >= threshold) {
+  // Phase 8 (D55): publish resolver telemetry whenever a response was actually received,
+  // not only on gate pass, so the e2e150 suite can report out_of_graph rate, resolver_mode and
+  // the gate's own accept/reject behaviour from /semantic_goal_result without a second source.
+  // /semantic_resolution_result is the D46 side channel, not a frozen section 12 interface.
+  // resolved_room keeps its pre-existing meaning (the room actually navigated to, empty unless
+  // the gate passed); attempted_room is the new telemetry field carrying the resolver's match
+  // regardless of gate outcome.
+  const nlohmann::json resolution_json{
+    {"command", command},
+    {"resolved_room", gate_passed ? response->matched_room_name : std::string("")},
+    {"attempted_room", response->matched_room_name},
+    {"raw_confidence", static_cast<double>(response->raw_confidence)},
+    {"calibrated_confidence", calibrated_confidence},
+    {"resolver_mode", response->resolver_mode},
+    {"out_of_graph", response->out_of_graph},
+    {"token_entropy", static_cast<double>(response->token_entropy)},
+    {"reasoning", response->reasoning},
+    {"success", response->success},
+    {"gate_passed", gate_passed},
+    {"threshold_used", threshold},
+  };
+  std_msgs::msg::String resolution_msg;
+  resolution_msg.data = resolution_json.dump();
+  resolution_pub_->publish(resolution_msg);
+
+  if (gate_passed) {
     setOutput("resolved_pose", response->resolved_pose);
     setOutput("resolved_room", response->matched_room_name);
     setOutput("calibrated_confidence", calibrated_confidence);
     RCLCPP_INFO(
       node_->get_logger(), "SemanticNavigateToPose: '%s' -> '%s' (confidence %.2f)",
       command.c_str(), response->matched_room_name.c_str(), calibrated_confidence);
-
-    const nlohmann::json resolution_json{
-      {"command", command},
-      {"resolved_room", response->matched_room_name},
-      {"raw_confidence", static_cast<double>(response->raw_confidence)},
-      {"calibrated_confidence", calibrated_confidence},
-    };
-    std_msgs::msg::String resolution_msg;
-    resolution_msg.data = resolution_json.dump();
-    resolution_pub_->publish(resolution_msg);
-
     return BT::NodeStatus::SUCCESS;
   }
 
