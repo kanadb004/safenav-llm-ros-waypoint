@@ -28,7 +28,7 @@ Status legend: `[ ]` not started, `[~]` in progress, `[x]` merged to main.
 | 8 | E2E validation, ablations, final results | [x] | #24 | #25 |
 | 8B | Corrective: e2e150 rescoring, clean reruns, claim corrections (section 11A) | [x] | #26 | #27 |
 | 8C | Spatial anchor fix and 8B corrections (section 11B) | [x] | #28 | #29 |
-| 8D | Ship the text anchor fix and 8C corrections (section 11C) | [ ] | | |
+| 8D | Ship the text anchor fix and 8C corrections (section 11C) | [ ] | #30 | |
 | 9 | Hardware readiness (no robot required) | [ ] | | |
 | 10 | Hardware bring-up (deferred until hardware is present) | [ ] | | |
 
@@ -191,8 +191,10 @@ merged; Phase 4's and Phase 5's own gate results are historical and superseded b
 | 150 run E2E, grammar on | 0 out of graph | 0/150 | 8 | met, structural |
 | e2e150 wrong-room action rate, gate on vs. gate off | none set; Condition B versus C | 0.173 (gate on, rescored production) vs. 0.187 (gate off, 8B rerun); essentially unchanged | 8, 8B | measured (D62); Phase 8's withdrawn 0.772 vs. 0.080 was a navigation artifact, not this |
 | e2e150 wrong-room actions with the gate on | none set; session 2 false pass bound is <= 5% | 26 of 140 acted-on commands (rescored), 25 of them `spatial` | 8, 8B | measured (D62) |
-| e2e150 wrong-room action rate, gate on vs. gate off, `text_anchor` on (8C, diagnostic only, default ships off) | none set; Condition B versus C | 0.000 (gate on) vs. 0.000 (gate off, re-gated offline); both eliminated | 8C | measured (D64), `docs/results/e2e150_report_8c.md` |
-| e2e150 wrong-room actions with the gate on, `text_anchor` on (8C, diagnostic only) | none set | 0 of 140 acted-on commands, spatial resolver correct 30/30 (up from 2/30) | 8C | measured (D64) |
+| e2e150 wrong-room action rate, gate on vs. gate off, `text_anchor` on (shipped configuration as of D65) | none set; Condition B versus C | 0.000 (gate on) vs. 0.020 (gate off, re-gated offline, 3/150 `negation` rows at 0.798); corrected by D65 from the wrong 0.000 vs. 0.000 (8C computation error) | 8C, 8D | measured (D64, corrected D65), `docs/results/e2e150_report_8c.md` |
+| e2e150 wrong-room actions with the gate on, `text_anchor` on (shipped configuration as of D65) | none set | 0 of 140 acted-on commands, spatial resolver correct 30/30 (up from 2/30) | 8C | measured (D64) |
+| Resolver raw top-1, corrected 500, `text_anchor` on (shipped configuration as of D65) | no gate (D45) | 0.730 | 8C/8D replay | reported, beside 5A's 0.732 (`text_anchor` off); `docs/results/text_anchor_replay_v2.md` |
+| Gated end-to-end, corrected 500, `text_anchor` on (shipped configuration as of D65) | >= 0.75 (0.824 strict) | 0.722 | 8C/8D replay | within noise of 0.75, misses 0.824, provisional (D53); beside Phase 7's 0.72 (`text_anchor` off); `docs/results/text_anchor_replay_v2.md` |
 
 **Amended 2026-10-14 (D57), re-measured 2026-10-14 (D58, Phase 8B).** The two e2e150 rows above
 were added after the Phase 8 review and re-measured in `docs/reports/phase-8b-corrective.md`.
@@ -1349,6 +1351,11 @@ difference; do not adjust the rule.
 
 ### 11B.5 Decision rule, frozen now
 
+**Superseded by D65 (2026-10-14, Phase 8D): this rule measured raw top-1 without the gate, the
+wrong quantity for a shipping decision, since production always runs behind the 0.85 gate.
+Section 11C (Phase 8D) applies the gated evidence instead and ships `text_anchor` on. Kept as
+written below; nothing here is rewritten.**
+
 `text_anchor` ships default **on** only if both hold on the held-out replay:
 
 - session 2 false pass at 0.85 stays at or below 0.05 with the recomputed features; and
@@ -1690,7 +1697,9 @@ prefers the single edge bearing room named in the command text after the first r
 (`extract_text_anchor`), falling back to the model's `room` on zero or more than one match.
 `within` is unchanged (it still anchors on the model's `room`, a sub location by design). The
 grammar itself (the GBNF form above) does not change; this amends only what `resolver_core.py`
-does with the decoded `room`/`relation` pair. Ships with its default off (11B.5); see D64.
+does with the decoded `room`/`relation` pair. Shipped with its default off (11B.5); see D64.
+**Amended 2026-10-14 (D65, Phase 8D): the default is on as of D65**, in `planner_params.yaml`,
+the `ResolverCore` constructor and the node's declared default alike.
 
 ### 12.7 room_annotations.json schema
 ```
@@ -2205,6 +2214,8 @@ appended now, unchanged in substance. D57 is the Phase 8B corrective replan.
   than tuning this one further. Also fixes `offline_gate_comparison.py` counting a `none`
   answer as an acted-on row (D63 finding 3): gate-off wrong-room action rate corrects from 0.268
   to 0.248 (500) and 0.290 to 0.190 (session 2); gate-on figures are unaffected.
+  **Superseded by D65 (2026-10-14, Phase 8D): `text_anchor` now ships `true`.** Kept as written;
+  nothing here is rewritten.
 - **D65: `text_anchor` ships on, reversing the outcome of 11B.5's frozen rule. The decision was
   made after the results were seen, and it is disclosed as such.** A review of Phase 8C (#29)
   found that 11B.5's second condition measured corrected 500 top-1 without the gate, which is

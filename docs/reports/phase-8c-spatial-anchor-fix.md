@@ -1,5 +1,18 @@
 # Phase 8C: spatial anchor fix
 
+> **Amended 2026-10-14 (Phase 8D, D65).** A review of this phase (#29) found: (1) section 4's
+> decision rule measured the corrected 500's raw top-1 without the gate, the wrong quantity for
+> a shipping decision, since production always runs behind the 0.85 gate; under the gate, across
+> all 800 held-out rows, the fix changes behaviour on exactly one row, removing a wrong action
+> and adding none; (2) "ships off" held only where `semantic_nav.launch.py` loads
+> `planner_params.yaml`: the `ResolverCore` constructor and the node's declared default both
+> already defaulted `text_anchor` on; (3) the offline Condition B versus C figure in section 5
+> (0.000 against 0.000) is a computation error, the correct figure is 0.000 against 0.020; (4)
+> the replay files' `anchor_room` column holds the model's own anchor, not the anchor the hop
+> used. Phase 8D ships `text_anchor` on everywhere, verifies the gated evidence from committed
+> code, and corrects the figure; see `docs/reports/phase-8d-ship-text-anchor.md`. Body below is
+> unchanged.
+
 A review of Phase 8B (#27) found the e2e150 spatial failures are a resolver double hop, not a
 calibrator problem (PLAN.md section 11B, D63). This phase fixes the post-decode step, measures
 the fix on held-out data by exact replay with no new inference, confirms it once end to end, and
