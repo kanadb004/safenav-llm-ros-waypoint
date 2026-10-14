@@ -25,7 +25,8 @@ Status legend: `[ ]` not started, `[~]` in progress, `[x]` merged to main.
 | 5A | Corrective: cue gating, benchmark re-audit, latency re-measure | [x] | #18 | #19 |
 | 6 | BT plugin, semantic goal node, end to end in sim | [x] | #20 | #21 |
 | 7 | Confidence calibration pipeline | [x] | #22 | #23 |
-| 8 | E2E validation, ablations, final results | [~] | #24 | #25 |
+| 8 | E2E validation, ablations, final results | [x] | #24 | #25 |
+| 8B | Corrective: e2e150 rescoring, clean reruns, claim corrections (section 11A) | [ ] | | |
 | 9 | Hardware readiness (no robot required) | [ ] | | |
 | 10 | Hardware bring-up (deferred until hardware is present) | [ ] | | |
 
@@ -41,7 +42,8 @@ with other work.
 | 5A Corrective pass | 1.0 d | ~1 h (benchmark reruns) | next |
 | 6 BT plugin and E2E | 1.25 d | none | |
 | 7 Calibration | 0.75 d | ~20 min | |
-| 8 E2E validation and results | 0.75 d | ~3.5 h (300 loopback runs) | |
+| 8 E2E validation and results | 0.75 d | ~3.5 h (300 loopback runs) | merged #25, claims under correction (D57) |
+| 8B Corrective pass (section 11A) | 0.75 d | ~3.5 h (450 loopback runs, isolated latency) | next |
 | 9 Hardware readiness | 0.5 d | none | |
 
 Phase 5 merged having met every engineering DoD item and missed both its accuracy gate (top-1
@@ -53,7 +55,8 @@ Phase 9 is documentation and configuration only. If the week runs tight it can s
 session without blocking anything, which puts the critical path at 3.75 days.
 
 Section 16A holds optional scope that is budgeted at zero. It is attempted only if Phase 8 and
-Phase 9 are merged and time is left over, and it never displaces either.
+Phase 9 are merged and time is left over, and it never displaces either. Phase 8B (section 11A,
+D57) counts as part of Phase 8 for this rule: 16A waits for 8B as well.
 
 ## 0. Ground rules that apply to every phase
 
@@ -176,7 +179,15 @@ merged; Phase 4's and Phase 5's own gate results are historical and superseded b
 | Precision on acted-upon commands | none set | 0.957 | 7 | reported |
 | False rejection, session 2 | gate withdrawn (D54) | 0.3662 | 7 | reported, provable optimum for this feature vector |
 | **Resolver latency p90, cold** | **< 3000 ms** | **3737 ms** | **5A** | **miss, the only outstanding one** |
-| 150 run E2E, grammar on | 0 out of graph | not yet run | 8 | pending |
+| 150 run E2E, grammar on | 0 out of graph | 0/150 | 8 | met, structural |
+| e2e150 gate on versus gate off | none set; Condition B versus C | Phase 8's 0.772 versus 0.080 is withdrawn (D57) | 8, 8B | pending 8B re-measure |
+| e2e150 wrong-room actions with the gate on | none set; session 2 false pass bound is <= 5% | 26 of 140 acted-on commands, 25 of them `spatial` (D57) | 8, 8B | pending 8B rescoring |
+
+**Amended 2026-10-14 (D57).** The two e2e150 rows above were added after the Phase 8 review.
+Phase 8's gate-on versus gate-off figure is a navigation artifact, not a gate effect, and the
+gate passed wrong rooms at calibrated confidence 0.90 to 0.95 on relational commands. Section
+11A (Phase 8B) re-measures both. Until it merges, the sentence below that latency is the only
+miss should be read with these two rows beside it.
 
 **One metric is currently a miss: latency.** Everything else is met, favourable against its
 literature anchor, reported without a gate, or not yet measured. The gated accuracy row is the
@@ -826,6 +837,289 @@ one un-reset session) was found and reported rather than averaged away; it infla
 ablation suites' absolute latency tails but does not touch the reached-intended comparison.
 Report: `docs/reports/phase-8-e2e-validation-results.md`. Deviations D55, D56.
 
+**Corrected by D57 (2026-10-14, after merge).** The paragraph above is kept as Phase 8 wrote it.
+Two of its claims do not hold against Phase 8's own run files. First, the gate-on versus gate-off
+comparison is not a gate effect: on the 50 shared commands the resolver acted on 48 with 10
+wrong in both conditions, and the 0.080 reached-intended comes from the loopback robot leaving
+the map (pose near x = -124 m from the sixth gate-off row onward) while Nav2 still reported
+`succeeded`. Second, "the core safety claim is demonstrated" holds only for the grammar half
+(0/150 out of graph); the gate passed 26 wrong rooms out of 140 acted-on commands. The 0/150
+result, the model ablation's accuracy columns, and the engineering stand. Section 11A is the
+corrective pass.
+
+## 11A. Phase 8B: corrective pass
+
+Named 8B rather than 8A because "8A" is already the section that holds Phase 5A, and a
+"Phase 8A" would be confused with it in every cross-reference. The section is numbered 11A
+after the 8A and 16A precedent, because merged reports cite section numbers.
+
+**You are a new session and you did not run Phase 8.** Read these, in this order, and nothing
+else in this file unless a step below sends you there: this section; section 1 (Targets,
+Target provenance, Current metric status); D53 to D57 in section 14;
+`docs/reports/phase-8-e2e-validation-results.md`; `docs/results/RESULTS.md`. The plan is about
+1500 lines and the rest of it is not needed for this pass.
+
+Goal: Phase 8 merged (#25) with its engineering intact and two headline claims that its own
+run files contradict. This pass rescores what can be rescored without inference, reruns what
+cannot on a clean and isolated setup, and corrects the documents. It changes **no** resolver,
+grammar, prompt, cue list, calibrator or threshold. Timeboxed at 0.75 day of human time plus
+about 3.5 h of unattended runs.
+
+### 11A.0 What the review found
+
+Every number here comes from files already on disk under `data/runs/` (gitignored, so they
+exist only on this machine until 11A.6 freezes them). Re-derive each one yourself before
+relying on it, and say in the report if any differs.
+
+1. **The gate-on versus gate-off headline is a navigation artifact.** Production trial 0 (the
+   first 50 rows of `e2e150_loopback.jsonl`, `run_id` prefix `e2e150-0-`) and
+   `e2e150_gate_off.jsonl` are the same 50 commands, and the resolver's chosen room agrees on 48
+   of them. With the gate on, 47 acted on and 8 wrong; with it off, 48 acted on and 10 wrong.
+   Over all 150 production rows the gate rejected a real room twice (both `negation`, both
+   wrong). Meanwhile 45 of 50 gate-off rows record a final pose outside the map (room poses span
+   x 0.2 to 19.5, y -6.0 to 6.5; from the sixth row onward the robot sits near x = -124 m) while
+   `nav_result` is `succeeded` on all 50. `e2e_report.py` counts `gate_passed and not
+   reached_intended` as a false start, so 34 correct resolutions the robot never reached became
+   "false starts". The 0.772 versus 0.080 measures the loopback simulator diverging, not the
+   gate.
+2. **The gate passes wrong rooms at high confidence on relational commands.** 26 of the 140
+   production commands that passed the gate went to a room other than the intended one, 25 of
+   them `spatial`, at calibrated confidence 0.90 to 0.95. Phase 7's session 2 false pass rate is
+   0.0426. Phase 8 reported no e2e150 false pass figure.
+3. **The e2e150 spatial labels are inverted for left and right.** `SPATIAL_ANCHORS` in
+   `scripts/run_trials.py` derives each label from `AnnotationGraph.related_rooms(anchor,
+   relation)`, the raw edge direction D34 established is wrong for this query. The resolver's
+   `relations.resolve_relation` correctly queries the inverse relation. Edge `kitchen right_of
+   reception` means reception is to the **left** of the kitchen, so "the room to the right of
+   the kitchen" is `meeting_room_a` (edge `kitchen left_of meeting_room_a`), not `reception` as
+   labelled. Six of the ten spatial phrasings are affected; the four `near` phrasings are
+   symmetric and correct. "The room to the right of the office" has **no** target in the graph,
+   so the correct outcome is abstention, and the resolver did abstain, but it was scored as a
+   failure. The import-time assertion checks agreement with the same wrong function, so it
+   could not catch this.
+4. **Spatial resolution nearly fails on unambiguous commands.** Rescored against corrected
+   labels, 2 of 30 production spatial rows are correct (1 of 30 under the inverted labels), and
+   all 25 wrong spatial passes stay wrong. Phase 5A's 0.615 `spatial` figure came mostly from
+   correct abstention on rows relabelled to `none`; its original-label figure was 0.215.
+5. **Every Phase 8 latency number is contaminated, and D56's reason for the 50-row ablations is
+   factually wrong.** The model ablation's `llama-server` ran from 04:13 to 07:27 IST, across
+   the production suite (04:24 to 05:24), grammar-off (05:25 to 05:45) and most of gate-off
+   (05:47 to 08:16). D56 cites a production suite of "about 3 hours"; its timestamps span one
+   hour, and the 50-row grammar-off run took 20 minutes.
+6. **The traceability item was ticked but nothing under `data/` was committed.** `data/runs/`
+   and `data/bags/` are gitignored, and the report cites an uncommitted `/tmp/launch2.log`.
+   Phase 7 had already flagged this.
+7. **`colcon test` passed 4 of 5.** CLAUDE.md requires a full pass before a PR. Phase 7 recorded
+   5 of 5 on the same code, so "pre-existing on main" conflicts with the record. Unverified
+   hypothesis: the running `semantic_nav.launch.py` stack on the same `ROS_DOMAIN_ID` answered
+   `/list_rooms` during the test; the Phase 8 report already records one such collision.
+8. **Smaller defects.** D55 and D56 were never appended to section 14 (done in this replan).
+   `t_nav_start` is null on 79 of 150 production rows, so time to navigation start rests on 71
+   rows. Three rows have `e2e_ms < resolver_ms`, which implies two clocks. `success_rate` counts
+   a spoken clarification as success (Phase 6 section 3.2) and is not a task metric. The model
+   ablation reports original labels only, and its top-3 denominator is 455 (adversarial rows
+   excluded) without saying so. RESULTS.md cites D41 where it means D44, gives "96 of 500"
+   where the relabel is 99 of 130 (D42), shows Phase 4 top-3 as n/a although 0.780 to 0.789 was
+   measured, and omits top-3 from the specification metrics table.
+
+What stands, and should be said so plainly: 0/150 out of graph with the grammar on; the model
+ablation's accuracy columns (Phi-3 mini 0.650 cross-checks 5A's 0.646; Phi-3.5 mini 0.654 is a
+tie, which reverses D36's "7 points worse" from the 100-row slice); the full-graph trial runner;
+the D55 telemetry; the production suite's navigation, which has no off-map row (row 138 has a
+null pose and is the only invalid one).
+
+### 11A.1 Freeze the relabel rule, then rescore without inference
+
+Same discipline as 8A.2: write the rule, commit it, then run it.
+
+- **The rule:** for each spatial command, the intended room is whatever
+  `relations.resolve_relation(graph, anchor, relation, command)` returns for the command's own
+  `(anchor, relation)` pair from `SPATIAL_ANCHORS`, or `"none"` when it abstains. This is the
+  resolver's own traversal, whose direction D34 tested against natural-language meaning. It
+  never sees a model output.
+- **Commands stay byte-identical.** Do not rewrite or replace any spatial phrasing to give
+  `meeting_room_b` a spatial target again; choosing commands after seeing results is the thing
+  this phase exists to avoid. The "right of the office" row becomes an abstention row, and the
+  report says so.
+- Add a test that would have caught the inversion independently of both functions: a
+  hand-written table of the six left/right phrasings with the answer read off the edge
+  direction in `room_annotations.json` (for example, "right of the kitchen" is
+  `meeting_room_a`), asserted against the corrected labels.
+- Rescore `e2e150_loopback.jsonl` against the corrected labels. `reached_intended` for spatial
+  rows is recomputed from the stored `pose_x`, `pose_y` against the corrected room's pose with
+  the same 0.5 m tolerance. Keep the original-label numbers alongside, as 5A did.
+
+### 11A.2 Metric definitions, fixed before any rerun
+
+Change `ml/safenav_ml/e2e_report.py` so these are separate quantities, each reported with its
+own numerator and denominator:
+
+| metric | definition |
+|--------|-----------|
+| acted rate | `gate_passed` / n |
+| wrong-room action rate (the specification's "false start") | `gate_passed and attempted_room != intended` / n, and also / acted |
+| correct abstention | intended `none` and not acted / rows with intended `none` |
+| resolver correct | `attempted_room == intended` (with `none` for abstention) / n |
+| navigation reach, given a correct acted resolution | `reached_intended` / correct acted rows; a simulator health figure, not a task metric |
+| navigation-invalid rows | final pose outside the map bounds, or null; excluded from reach and counted |
+| nav_result succeeded | kept, relabelled as BT completion, with the Phase 6 section 3.2 note |
+
+Loopback navigation is deterministic given the resolved room (D49), so the Condition B versus C
+comparison is the wrong-room action rate, not reach. Reach is reported only for valid rows.
+
+### 11A.3 Harness fixes
+
+- `SPATIAL_ANCHORS` labels corrected per 11A.1, and its import-time check switched from
+  `related_rooms` to `resolve_relation`. The 11A.1 table test stays as the independent check.
+- **Off-map guard.** After each goal, if the final pose is outside the map bounds (read from the
+  map YAML, not hardcoded) the row is marked `nav_invalid`, and after three consecutive invalid
+  rows the suite stops, so a diverged simulator cannot quietly fill a suite. On a stop: relaunch
+  the stack, resume from the stopped row, and record the restart in the report.
+- **One fresh `semantic_nav.launch.py` per suite.** No suite starts on a stack that served an
+  earlier suite.
+- `t_nav_start`: find out why it is null on 79 of 150 rows (likely no `/cmd_vel` inside the
+  capture window when the robot is already at the goal, or a capture race), fix it if it is a
+  capture bug, otherwise define the null case, and report n beside every percentile.
+- Record which clock each timestamp comes from; if `resolver_ms` and `e2e_ms` come from
+  different clocks, say so rather than mixing them.
+
+### 11A.4 Clean reruns: gate off and grammar off, 150 each
+
+Run sequentially, never concurrently with each other or with any other GPU work:
+
+1. Fresh host `llama-server` (production model, Metal), `ps aux` checked clean of other
+   inference, nothing else running on the GPU for the duration.
+2. Fresh stack, then **gate off** (`--gate-threshold 0.0`, grammar on) at the full 150 (3
+   trials). Grammar and model are identical to production, so its `resolver_ms` is also the
+   clean production-configuration resolver latency for this phase.
+3. Fresh stack, then **grammar off** (gate at 0.85) at the full 150.
+4. Production is not rerun: its resolver outputs and its navigation are valid (11A.0, last
+   paragraph). Rescore it under 11A.1 and 11A.2.
+
+Compare gate on (production, 150) against gate off (rerun, 150) on the wrong-room action rate,
+with a per-category breakdown. Grammar off: report the out of graph count at n = 150 alongside
+D24's 5/500.
+
+**Whatever the gate comparison shows is the result.** If the gate makes no measurable
+difference on e2e150, that is the finding, and it is consistent with finding 2: this command set
+contains almost no low-confidence wrong answers for the gate to catch. Do not add, remove or
+rephrase commands to change it.
+
+### 11A.5 Condition B versus C where the gate has something to catch, offline
+
+No inference: use the cached `data/runs/phase5a_full500.jsonl` with the Phase 7 feature
+reconstruction, and `data/runs/calibration/session2_trials.jsonl`. For each, report the
+wrong-room action rate and the acted rate at threshold 0.85 versus 0.0, per category. This
+places the e2e150 result beside the two sets where the gate was designed to act, so the report
+can say where the gate helps and where it does not.
+
+### 11A.6 Calibrator diagnostic, no retraining
+
+For e2e150 production, tabulate the five section 12.8 features for wrong passes against correct
+passes (mean and range of `raw_confidence`, `edit_distance`, `command_length`, `token_entropy`;
+`n_candidates` is constant, D53). State plainly whether the wrong spatial passes are separable
+on any feature. Do not retrain, re-threshold, or add features. This feeds 16A O1 and O2, and the
+report notes that a 26 of 140 wrong-pass rate on relational commands is evidence against
+relaxing the false pass bound to 0.15 in O2.
+
+### 11A.7 Model ablation: clean latency and corrected labels
+
+- Accuracy is not rerun. Add a corrected-label (`synthetic_500_v2.jsonl`) top-1 column computed
+  from the existing `data/runs/model_ablation/*.jsonl`, and state the top-3 denominator.
+- Latency is re-measured in isolation for all three models: held-out 100 slice, one fresh
+  `llama-server` per model, nothing else on the GPU, the `cold_latency_remeasure.py` protocol
+  (server-reported timings, first-call outlier reported rather than dropped). Report p50, p90,
+  p99 and `predicted_per_token_ms`. Phase 8's contended latency columns stay in RESULTS.md,
+  marked superseded.
+
+### 11A.8 Tests
+
+Run `colcon test` with no launch stack up, and with `ROS_DOMAIN_ID` set to a value no running
+stack uses. If `test_annotation_map_node_launch.py` passes, record that the Phase 8 failure was
+environmental. If it still fails, diagnose it; fix the test only where the defect is in the
+test or its fixture loading, and record it as a deviation. 5 of 5 before the PR.
+
+### 11A.9 Freeze the data so the results are traceable
+
+Commit small run files to a tracked location, `data/frozen/`, with a `MANIFEST.md` giving the
+sha256, row count, producing commit and command for each file: the three Phase 8 e2e150 files
+as they were (prefix `phase8_`), the two 8B reruns, the corrected spatial labels,
+`data/runs/model_ablation/*.jsonl`, `phase5a_full500.jsonl`, and the two calibration trial
+files. Together they are about 2.5 MB. Bags (112 MB) stay uncommitted: record their path,
+size and `metadata.yaml` sha256 in the manifest. Every table in RESULTS.md cites a file in
+`data/frozen/` from now on.
+
+### 11A.10 Documents: amend, never rewrite
+
+- `docs/reports/phase-8-e2e-validation-results.md`: a dated amendment banner at the top naming
+  each withdrawn claim and the 8B report that replaces it. Body untouched.
+- `docs/reports/phase-6-bt-plugin-e2e.md`: a banner noting that the section 3.3 example "the
+  room to the left of the kitchen" resolved to `kitchen`, which is wrong (`reception` is left of
+  the kitchen), so it shows the hop path executing, not resolving correctly.
+- `docs/results/RESULTS.md`: amendment banner, then correct sections 1, 3, 4, 5, 6 and 7 in place,
+  keeping each superseded figure visible with a "superseded by 8B" note rather than deleting it.
+  Fix the defects in 11A.0 item 8. Add top-3 to the specification table with its full history
+  (0.97 in the Review 2 table and plan v1; 0.88 in the v2 redraft; 0.85 in the 5A plan; no
+  deviation recorded for either change), reporting 0.868 against both 0.85 and 0.97, the way
+  section 1 reports gated accuracy against both 0.75 and 0.824. Record that as this phase's
+  first deviation and add a top-3 row to section 1's provenance table.
+- Section 1 of this plan: replace the two "pending 8B" rows in Current metric status with
+  measured values, and revise the "one metric is a miss" sentence to match.
+- `README.md` results summary: add the spatial finding and the gate result as measured.
+- Stale wording found in the same review, each corrected in place with a "Corrected by D57"
+  note, nothing deleted: D45's last sentence ("a 3000 ms gate taken from the specification, not
+  set by judgment"; it is internally set per D54); section 1 Targets prose ("the accuracy gate
+  the specification actually asks for is the gated end-to-end 0.85"; it is >= 0.75 per D54);
+  section 13 ("the hardware profile uses the specification's 3000"); 16A O1's "D23's seam
+  contract" (the seam is section 8.2 and D28); `docs/archive/superseded-decisions.md` S6 (0.85
+  "still required" and "the specification's own metrics table"), as a note at the end of S6.
+
+### 11A.11 What not to do
+
+- No change to the resolver, grammar, prompt, cue list, calibrator, threshold or annotation
+  graph. 16A O1 and O2 stay deferred; this pass only measures.
+- No rewriting of e2e150 commands, and no labels derived from model outputs.
+- Nothing runs concurrently on the GPU while a latency figure is being collected, and
+  `colcon test` never runs while a launch stack is up on the same domain.
+- No re-tuning in response to the gate result or the spatial result. Both are findings.
+- Do not delete Phase 8's files, tables or report text; supersede them visibly.
+
+### DoD
+
+- [ ] Relabel rule committed before running; the 11A.1 table test passes; production rescored
+      against corrected and original labels, both reported.
+- [ ] `e2e_report.py` reports the 11A.2 metrics separately, with numerators and denominators.
+- [ ] Off-map guard, per-suite fresh stack, and the `t_nav_start` finding implemented or
+      documented; any guard stop recorded.
+- [ ] Gate-off rerun at 150 and grammar-off rerun at 150, sequential, GPU isolated, zero
+      navigation-invalid rows or every one accounted for.
+- [ ] Condition B versus C wrong-room action rate on e2e150 (150 versus 150), with per-category
+      breakdown, reported as measured.
+- [ ] Offline B versus C on the corrected 500 benchmark and session 2 (11A.5).
+- [ ] e2e150 wrong-pass count and rate, and the 11A.6 feature table.
+- [ ] Clean resolver p90 from the gate-off rerun, and the isolated three-model latency table.
+- [ ] Model ablation corrected-label top-1 column and stated top-3 denominator.
+- [ ] `colcon test` 5 of 5 with no stack up, or a recorded fix.
+- [ ] `data/frozen/` with `MANIFEST.md`; every RESULTS.md table cites it.
+- [ ] Amendments in 11A.10 made; no Phase 8 text deleted.
+- [ ] Report `docs/reports/phase-8b-corrective.md` written, PR merged.
+
+Gate: every claim in RESULTS.md and README.md is supported by a frozen file. The Condition B
+versus C result is reported as measured, whatever it is.
+
+### 11A.12 Git flow and numbering
+
+```
+git checkout main && git pull
+gh issue create --title "Phase 8B: corrective pass" --body-file <file> --label phase
+git checkout -b phase-8b/corrective
+```
+
+PR title `Phase 8B: corrective pass`, body as CLAUDE.md specifies, `Closes #<issue>`. Tick the
+8B status row and fill in issue and PR numbers before merging. **This phase's deviations start
+at D58**: D55 and D56 were Phase 8's, D57 is this replan. Section 11 and this section's scope
+text stay as written.
+
 ## 12. Interface and data contracts (frozen after Phase 1)
 
 ### 12.1 SemanticGoal.msg
@@ -1309,6 +1603,40 @@ D53 was added after Phase 7 merged, when the feature vector was audited.
     BTGenBot's inference timings to a Jetson AGX Orin. The paper states they were measured on an
     NVIDIA RTX Quadro 6000, a desktop GPU. A correction note is added there. This is why the
     gates were re-checked against the papers and not against that table.
+
+D55 and D56 were recorded by Phase 8 in its report and PR but not appended here; they are
+appended now, unchanged in substance. D57 is the Phase 8B corrective replan.
+
+- **D55: `/semantic_resolution_result` publishes on every resolver response, not only on gate
+  pass.** It carries `resolver_mode`, `out_of_graph`, `token_entropy`, `reasoning`, `success`,
+  `gate_passed`, `threshold_used` and a new `attempted_room`; `resolved_room` keeps its meaning
+  (empty unless the gate passed). `semantic_goal_node` merges the same fields into
+  `/semantic_goal_result`. Extends the D46 side channel, not a section 12 interface. Phase 8
+  report section 1.
+- **D56: Phase 8 measurement reductions.** The grammar-off and gate-off ablations ran at 50
+  rows (1 trial) instead of 150; all three e2e150 suites and the model ablation ran
+  concurrently on one Mac, so every Phase 8 latency figure includes GPU contention; the three
+  suites shared one un-reset launch session; a first production attempt corrupted by a
+  concurrent `colcon test` was discarded and rerun. Phase 8 report section 2.
+  **Corrected by D57 on one point:** D56 justifies the 50-row ablations by a production suite of
+  "about 3 hours". The suite's own timestamps span one hour (04:24 to 05:24 IST) and the 50-row
+  grammar-off run took 20 minutes, so a full 150 for both ablations was roughly two more hours,
+  not a multi-hour addition with no budget.
+- **D57: Phase 8's gate-on versus gate-off headline is withdrawn as a simulator artifact, and a
+  corrective pass, Phase 8B (section 11A), is added.** Found in a review of Phase 8's run files
+  after merge (#25). On the same 50 commands the resolver acted on 47 with 8 wrong (gate on,
+  production trial 0) and 48 with 10 wrong (gate off); the gate rejected a real room twice in
+  all 150 production rows. The reported 0.080 reached-intended comes from 45 of 50 gate-off
+  rows ending off the map while Nav2 reported `succeeded`, counted as false starts by a metric
+  that conflated navigation failure with a wrong resolution. The review also found the gate
+  passing 26 wrong rooms of 140 acted-on commands (25 `spatial`, calibrated confidence 0.90 to
+  0.95) against Phase 7's 0.0426 session 2 false pass rate; the e2e150 left and right spatial
+  labels inverted by the D34 direction error, in the suite rather than the resolver; spatial
+  correctness of 2 of 30 under corrected labels; contaminated latency; uncommitted run data;
+  and a 4 of 5 `colcon test` result. What stands: 0/150 out of graph with the grammar on, the
+  model ablation's accuracy columns, and the engineering. Section 11A lists each finding with
+  its evidence and the work that corrects it. Phase 8 is marked merged and its section 11
+  outcome paragraph carries a "Corrected by D57" note; nothing Phase 8 wrote is deleted.
 
 ## 15. Phase 9: hardware readiness (no robot required)
 
