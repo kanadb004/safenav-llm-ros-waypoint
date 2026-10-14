@@ -11,9 +11,10 @@ covering /semantic_goal, /clarification_request, /cmd_vel, /odom, /tts_text.
 
 The "e2e150" suite is 10 navigable rooms (the Phase 2 ten room tour) x 5 phrasing variants
 (direct, alias, negation, abbreviation, spatial) x 3 trials = 150 commands. Each spatial
-variant's (anchor, relation) pair was checked against AnnotationGraph.related_rooms() to return
-exactly the intended room before being hardcoded here (see the module docstring on
-SPATIAL_VARIANTS); the check is re-run at import time as a guard against the graph drifting.
+variant's intended room is CORRECTED_SPATIAL_LABELS[room], frozen by PLAN.md 11A.1 from
+relations.resolve_relation() (the resolver's own traversal direction), not the room key the
+command text was built from; the check is re-run at import time as a guard against the graph
+drifting. Commands are byte-identical to Phase 8 (D57): only the scored intended room changed.
 
 Usage (inside the running stack, e.g. semantic_nav.launch.py already up):
     ros2 run semantic_waypoint_planner run_trials.py --suite e2e150 \
@@ -32,7 +33,7 @@ import subprocess
 import sys
 import time
 import uuid
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import rclpy
 from rclpy.node import Node
@@ -41,10 +42,13 @@ from std_msgs.msg import String
 from ament_index_python.packages import get_package_share_directory
 from semantic_waypoint_planner.msg import ClarificationRequest, SemanticGoal
 from semantic_waypoint_planner.graph import AnnotationGraph
+from semantic_waypoint_planner.relations import resolve_relation
 from semantic_waypoint_planner.resolver_core import min_edit_distance, normalize_command
 
 ANNOTATIONS_PATH = os.path.join(
     get_package_share_directory("semantic_waypoint_planner"), "maps", "room_annotations.json")
+MAP_YAML_PATH = os.path.join(
+    get_package_share_directory("safenav_sim"), "maps", "safenav_lab.yaml")
 
 ROOMS = [
     "reception", "kitchen", "meeting_room_a", "meeting_room_b", "office",
@@ -79,8 +83,9 @@ NEGATIONS = {
     "workshop": "Not the lab, take me to the fabrication room instead.",
 }
 
-# (anchor, relation) -> intended room, derived from AnnotationGraph.related_rooms() so that each
-# pair resolves to exactly this one room given the committed room_annotations.json edges.
+# (anchor, relation) per spatial command, keyed by the room that built the command (commands
+# stay byte-identical across the 8B relabel, PLAN.md 11A.1). This mapping is NOT the intended
+# room for scoring; see CORRECTED_SPATIAL_LABELS below.
 SPATIAL_ANCHORS = {
     "reception": ("kitchen", "right_of"),
     "kitchen": ("meeting_room_a", "right_of"),
@@ -94,6 +99,50 @@ SPATIAL_ANCHORS = {
     "workshop": ("lab", "left_of"),
 }
 
+# PLAN.md 11A.1: the relabel rule, frozen before rescoring. For each spatial command, the
+# intended room is whatever relations.resolve_relation(graph, anchor, relation, command)
+# returns for the command's own (anchor, relation) pair above, or "none" when it abstains.
+# This is the resolver's own graph traversal, never a model output, and it is the INVERSE
+# direction of AnnotationGraph.related_rooms(anchor, relation), which is what the original
+# e2e150 suite checked and which D57 finding 3 established is the wrong direction for this
+# query (an edge "A right_of B" means A is right of B, not that something right of B is A).
+# Six of the ten room keys are left_of/right_of phrasings and are affected; the four near
+# phrasings are symmetric and unaffected. Keyed by the room that built the command, not by
+# the corrected target, so build_commands() keeps generating byte-identical command text.
+CORRECTED_SPATIAL_LABELS = {
+    "reception": "meeting_room_a",
+    "kitchen": "meeting_room_b",
+    "meeting_room_a": "office",
+    "meeting_room_b": "none",
+    "office": "office",
+    "server_room": "storage_room",
+    "charging_dock": "charging_dock",
+    "storage_room": "storage_room",
+    "lab": "lab",
+    "workshop": "storage_room",
+}
+
+
+def _map_bounds(yaml_path: str = MAP_YAML_PATH) -> Tuple[float, float, float, float]:
+    """(x_min, x_max, y_min, y_max) from the map YAML's origin/resolution and the referenced
+    PGM's width/height, read from disk rather than hardcoded (PLAN.md 11A.3 off-map guard)."""
+    import yaml as _yaml
+
+    with open(yaml_path, "r", encoding="utf-8") as f:
+        meta = _yaml.safe_load(f)
+    origin_x, origin_y = float(meta["origin"][0]), float(meta["origin"][1])
+    resolution = float(meta["resolution"])
+    pgm_path = os.path.join(os.path.dirname(yaml_path), meta["image"])
+    with open(pgm_path, "rb") as f:
+        magic = f.readline().strip()
+        if magic != b"P5":
+            raise ValueError(f"{pgm_path}: expected a P5 (binary greyscale) PGM")
+        line = f.readline()
+        while line.startswith(b"#"):
+            line = f.readline()
+        width, height = (int(v) for v in line.split())
+    return origin_x, origin_x + width * resolution, origin_y, origin_y + height * resolution
+
 
 def _spatial_phrase(anchor: str, relation: str) -> str:
     anchor_text = anchor.replace("_", " ")
@@ -104,24 +153,28 @@ def _spatial_phrase(anchor: str, relation: str) -> str:
 
 
 def build_commands() -> List[Dict[str, str]]:
-    """One row per (room, category); e2e150 repeats each 3 times at call time."""
+    """One row per (room, category); e2e150 repeats each 3 times at call time. Every row
+    carries ``intended``, the room scored against; for spatial rows this is
+    CORRECTED_SPATIAL_LABELS[room] (possibly "none"), not ``room`` itself."""
     graph = AnnotationGraph.from_file(ANNOTATIONS_PATH)
     rows = []
     for room in ROOMS:
         anchor, relation = SPATIAL_ANCHORS[room]
-        found = graph.related_rooms(anchor, relation)
-        if found != [room]:
+        spatial_command = _spatial_phrase(anchor, relation)
+        target, _ = resolve_relation(graph, anchor, relation, spatial_command)
+        corrected = target or "none"
+        if corrected != CORRECTED_SPATIAL_LABELS[room]:
             raise RuntimeError(
-                f"SPATIAL_ANCHORS[{room!r}] = ({anchor!r}, {relation!r}) resolves to {found!r} "
-                f"against the current room_annotations.json, not [{room!r}] as hardcoded. "
-                "The graph has drifted since this suite was authored; fix SPATIAL_ANCHORS."
+                f"CORRECTED_SPATIAL_LABELS[{room!r}] = {CORRECTED_SPATIAL_LABELS[room]!r} but "
+                f"relations.resolve_relation(graph, {anchor!r}, {relation!r}, ...) now returns "
+                f"{corrected!r}. The graph has drifted since the 11A.1 relabel; fix the table."
             )
         room_text = room.replace("_", " ")
-        rows.append({"room": room, "category": "direct", "command": f"Can you take me to {room_text}?"})
-        rows.append({"room": room, "category": "alias", "command": f"Could you guide me to the {ALIASES[room]}?"})
-        rows.append({"room": room, "category": "negation", "command": NEGATIONS[room]})
-        rows.append({"room": room, "category": "abbreviation", "command": f"Head to {ABBREVIATIONS[room]}, please."})
-        rows.append({"room": room, "category": "spatial", "command": _spatial_phrase(anchor, relation)})
+        rows.append({"room": room, "intended": room, "category": "direct", "command": f"Can you take me to {room_text}?"})
+        rows.append({"room": room, "intended": room, "category": "alias", "command": f"Could you guide me to the {ALIASES[room]}?"})
+        rows.append({"room": room, "intended": room, "category": "negation", "command": NEGATIONS[room]})
+        rows.append({"room": room, "intended": room, "category": "abbreviation", "command": f"Head to {ABBREVIATIONS[room]}, please."})
+        rows.append({"room": room, "intended": corrected, "category": "spatial", "command": spatial_command})
     return rows
 
 
@@ -167,10 +220,22 @@ class TrialRunner(Node):
             if nonzero and "t_nav_start" not in self._first_cmd_vel_after:
                 self._first_cmd_vel_after["t_nav_start"] = time.monotonic()
 
+    def _drain(self, timeout_sec: float) -> None:
+        """rclpy.spin_once services at most one ready callback per call; with five
+        subscriptions (/semantic_goal_result, /clarification_request,
+        /semantic_resolution_result, /odom, /cmd_vel) all busy during navigation, a single
+        spin_once per poll starves the others and drops queued /cmd_vel messages past its
+        depth-10 queue before they are ever serviced. This is the capture bug behind the null
+        t_nav_start rows (PLAN.md 11A.3): drain everything ready, not just one callback, before
+        waiting again."""
+        rclpy.spin_once(self, timeout_sec=timeout_sec)
+        for _ in range(50):
+            rclpy.spin_once(self, timeout_sec=0.0)
+
     def wait_ready(self) -> None:
         deadline = time.monotonic() + 10.0
         while time.monotonic() < deadline:
-            rclpy.spin_once(self, timeout_sec=0.2)
+            self._drain(0.2)
             if self.count_subscribers("/semantic_goal") > 0 and self.count_publishers(
                     "/semantic_goal_result") > 0:
                 break
@@ -188,7 +253,7 @@ class TrialRunner(Node):
         deadline = time.monotonic() + timeout
         result = None
         while time.monotonic() < deadline:
-            rclpy.spin_once(self, timeout_sec=0.2)
+            self._drain(0.2)
             pending = self._results.get(command)
             if pending:
                 result = pending.pop(0)
@@ -260,12 +325,16 @@ def main() -> int:
     parser.add_argument("--bag-dir", default="")
     parser.add_argument("--no-bag", action="store_true")
     parser.add_argument("--graph", default=ANNOTATIONS_PATH)
+    parser.add_argument("--start-row", type=int, default=0,
+                         help="PLAN.md 11A.3: resume after an off-map guard stop, in append mode.")
     args = parser.parse_args()
 
     base_commands = build_commands()
     graph = AnnotationGraph.from_file(args.graph)
     room_poses = {r.name: r.pose for r in graph.rooms}
     room_aliases = {r.name: r.aliases for r in graph.rooms}
+    x_min, x_max, y_min, y_max = _map_bounds()
+    print(f"map bounds: x [{x_min:.2f}, {x_max:.2f}], y [{y_min:.2f}, {y_max:.2f}]")
 
     rclpy.init()
     node = TrialRunner()
@@ -283,76 +352,102 @@ def main() -> int:
         bag_proc = start_bag(bag_dir)
         print(f"recording bag to {bag_dir}")
 
+    total_rows = len(base_commands) * args.trials
+    all_rows = [(trial, entry) for trial in range(args.trials) for entry in base_commands]
+
     out_of_graph_count = 0
-    rows_written = 0
+    rows_written = args.start_row
+    consecutive_invalid = 0
+    guard_tripped = False
+    mode = "a" if args.start_row else "w"
     try:
-        with open(args.out, "w", encoding="utf-8") as fh:
-            run_idx = 0
-            for trial in range(args.trials):
-                for entry in base_commands:
-                    run_idx += 1
-                    row = node.run_one(entry["command"], args.gate_threshold, args.timeout)
-                    intended = entry["room"]
-                    resolved = row.get("resolved_room") or row.get("attempted_room") or ""
-                    command_norm = normalize_command(entry["command"])
-                    edit_distance = min_edit_distance(resolved, room_aliases.get(resolved, []), command_norm)
-                    pose = room_poses.get(intended, {})
-                    reached = None
-                    if row.get("pose_x") is not None and pose:
-                        dx = row["pose_x"] - pose.get("x", 0.0)
-                        dy = row["pose_y"] - pose.get("y", 0.0)
-                        reached = (dx * dx + dy * dy) ** 0.5 < 0.5
-                    out_of_graph = bool(row.get("out_of_graph", False))
-                    if out_of_graph:
-                        out_of_graph_count += 1
-                    record = {
-                        "run_id": f"e2e150-{trial}-{run_idx}",
-                        "timestamp": time.time(),
-                        "suite": args.suite,
-                        "sim_mode": "loopback",
-                        "command": entry["command"],
-                        "category": entry["category"],
-                        "intended_room": intended,
-                        "resolved_room": row.get("resolved_room", ""),
-                        "attempted_room": row.get("attempted_room", ""),
-                        "raw_confidence": row.get("raw_confidence"),
-                        "calibrated_confidence": row.get("calibrated_confidence"),
-                        "token_entropy": row.get("token_entropy"),
-                        "n_candidates": 30,
-                        "command_length": len(entry["command"].strip()),
-                        "edit_distance": edit_distance,
-                        "resolver_mode": row.get("resolver_mode"),
-                        "grammar_on": args.grammar_on,
-                        "gate_threshold": args.gate_threshold,
-                        "gate_passed": row.get("gate_passed"),
-                        "bt_status": "SUCCESS" if row.get("gate_passed") else "FAILURE_FALLBACK",
-                        "clarification_reason": row.get("clarification_reason", ""),
-                        "nav_result": row.get("nav_result"),
-                        "t_command": row.get("t_command_s"),
-                        "t_resolved": row.get("t_resolved_s"),
-                        "t_nav_start": row.get("t_nav_start_s"),
-                        "t_nav_end": row.get("t_nav_end_s"),
-                        "resolver_ms": row.get("resolver_ms"),
-                        "e2e_ms": row.get("e2e_ms"),
-                        "pose_x": row.get("pose_x"),
-                        "pose_y": row.get("pose_y"),
-                        "pose_theta": row.get("pose_theta"),
-                        "reached_intended": reached,
-                        "out_of_graph": out_of_graph,
-                    }
-                    fh.write(json.dumps(record) + "\n")
-                    fh.flush()
-                    rows_written += 1
-                    print(f"[{rows_written}/{len(base_commands) * args.trials}] "
-                          f"{entry['command']!r} -> {record['resolved_room']!r} "
-                          f"(gate_passed={record['gate_passed']}, nav={record['nav_result']})")
+        with open(args.out, mode, encoding="utf-8") as fh:
+            for run_idx, (trial, entry) in enumerate(all_rows[args.start_row:], start=args.start_row + 1):
+                row = node.run_one(entry["command"], args.gate_threshold, args.timeout)
+                intended = entry["intended"]
+                resolved = row.get("resolved_room") or row.get("attempted_room") or ""
+                command_norm = normalize_command(entry["command"])
+                edit_distance = min_edit_distance(resolved, room_aliases.get(resolved, []), command_norm)
+                pose = room_poses.get(intended, {})
+
+                nav_invalid = False
+                if row.get("pose_x") is None:
+                    nav_invalid = True
+                elif not (x_min <= row["pose_x"] <= x_max and y_min <= row["pose_y"] <= y_max):
+                    nav_invalid = True
+
+                reached = None
+                if not nav_invalid and intended != "none" and pose:
+                    dx = row["pose_x"] - pose.get("x", 0.0)
+                    dy = row["pose_y"] - pose.get("y", 0.0)
+                    reached = (dx * dx + dy * dy) ** 0.5 < 0.5
+
+                if nav_invalid:
+                    consecutive_invalid += 1
+                else:
+                    consecutive_invalid = 0
+
+                out_of_graph = bool(row.get("out_of_graph", False))
+                if out_of_graph:
+                    out_of_graph_count += 1
+                record = {
+                    "run_id": f"e2e150-{trial}-{run_idx}",
+                    "timestamp": time.time(),
+                    "suite": args.suite,
+                    "sim_mode": "loopback",
+                    "command": entry["command"],
+                    "category": entry["category"],
+                    "intended_room": intended,
+                    "resolved_room": row.get("resolved_room", ""),
+                    "attempted_room": row.get("attempted_room", ""),
+                    "raw_confidence": row.get("raw_confidence"),
+                    "calibrated_confidence": row.get("calibrated_confidence"),
+                    "token_entropy": row.get("token_entropy"),
+                    "n_candidates": 30,
+                    "command_length": len(entry["command"].strip()),
+                    "edit_distance": edit_distance,
+                    "resolver_mode": row.get("resolver_mode"),
+                    "grammar_on": args.grammar_on,
+                    "gate_threshold": args.gate_threshold,
+                    "gate_passed": row.get("gate_passed"),
+                    "bt_status": "SUCCESS" if row.get("gate_passed") else "FAILURE_FALLBACK",
+                    "clarification_reason": row.get("clarification_reason", ""),
+                    "nav_result": row.get("nav_result"),
+                    "t_command": row.get("t_command_s"),
+                    "t_resolved": row.get("t_resolved_s"),
+                    "t_nav_start": row.get("t_nav_start_s"),
+                    "t_nav_end": row.get("t_nav_end_s"),
+                    "resolver_ms": row.get("resolver_ms"),
+                    "e2e_ms": row.get("e2e_ms"),
+                    "pose_x": row.get("pose_x"),
+                    "pose_y": row.get("pose_y"),
+                    "pose_theta": row.get("pose_theta"),
+                    "reached_intended": reached,
+                    "nav_invalid": nav_invalid,
+                    "out_of_graph": out_of_graph,
+                }
+                fh.write(json.dumps(record) + "\n")
+                fh.flush()
+                rows_written += 1
+                print(f"[{rows_written}/{total_rows}] "
+                      f"{entry['command']!r} -> {record['resolved_room']!r} "
+                      f"(gate_passed={record['gate_passed']}, nav={record['nav_result']}, "
+                      f"nav_invalid={nav_invalid})")
+
+                if consecutive_invalid >= 3:
+                    guard_tripped = True
+                    print(f"\nOFF-MAP GUARD: 3 consecutive nav_invalid rows ending at row {run_idx}. "
+                          f"Stopping. Relaunch the stack and resume with --start-row {run_idx} "
+                          f"(appends to {args.out}).")
+                    break
     finally:
         stop_bag(bag_proc)
         node.destroy_node()
         rclpy.shutdown()
 
-    print(f"wrote {rows_written} rows to {args.out}; out_of_graph_count={out_of_graph_count}")
-    return 0
+    print(f"wrote {rows_written - args.start_row} rows this invocation to {args.out}; "
+          f"out_of_graph_count={out_of_graph_count}; guard_tripped={guard_tripped}")
+    return 1 if guard_tripped else 0
 
 
 if __name__ == "__main__":
