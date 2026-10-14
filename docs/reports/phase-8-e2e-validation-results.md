@@ -1,5 +1,22 @@
 # Phase 8: end to end validation, ablations, final results
 
+> **Amended 2026-10-14 (D57/D58, Phase 8B corrective pass,
+> `docs/reports/phase-8b-corrective.md`).** A post-merge review (#25) found that several
+> headline claims below do not hold; each is corrected there, not here. Withdrawn claims:
+> (1) the section 3.2 "gate-on vs. gate-off" 0.772 vs. 0.080 reached-intended headline is a
+> loopback-simulator artifact (45/50 gate-off rows ended off the map while `nav_result` read
+> `succeeded`), not a gate effect; the corrected measure is the wrong-room action rate, 0.173
+> (gate on) vs. 0.187 (gate off), essentially unchanged. (2) The e2e150 `spatial` category's
+> intended rooms were mislabelled for six of ten room keys (the suite checked
+> `AnnotationGraph.related_rooms()` directly, the wrong direction for "room to the right of X"
+> queries); rescored, spatial correctness is 2/30, not reported here. (3) The 4/5 `colcon test`
+> result traced to a stray process from an earlier test run on the same `ROS_DOMAIN_ID`, not a
+> defect in `test_test_annotation_map_node_launch.py`; it passes 5/5 with no stack up. (4) All
+> Phase 8 latency figures ran under GPU contention and a shared, un-reset launch session; 8B
+> reruns each ablation in isolation. What stands, unchanged: 0/150 out-of-graph with the
+> grammar on, the model ablation's accuracy columns, and the engineering this phase built.
+> Nothing below is deleted; read it alongside the corrective report.
+
 ## 1. What this phase built
 
 - `ros2_ws/src/semantic_waypoint_planner/scripts/run_trials.py` (new): drives the full

@@ -185,3 +185,10 @@ more informative, and it matches how the specification's own metrics table is st
 
 This is a reporting and target change, not a relaxation: both numbers are gates, and the
 harder one (0.85) is still required of the finished system.
+
+**Corrected by D57, 2026-10-14.** The last sentence above is wrong on two points: "the
+specification's own metrics table" was drafted inside this project and was never approved at
+Review 2 (D54), so it carries no external authority; and 0.85 is not "still required" (D45
+withdrew the raw top-1 gate entirely, and D54 re-anchored gated end-to-end accuracy at >= 0.75,
+literature-anchored on KnowNo's multi-step setting, with 0.824 reported alongside as the
+stricter category-weighted reading). See PLAN.md section 1 for the current targets.

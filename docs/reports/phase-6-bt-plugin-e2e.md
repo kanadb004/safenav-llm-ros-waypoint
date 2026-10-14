@@ -1,5 +1,16 @@
 # Phase 6: BT plugin, semantic goal node, end to end in simulation
 
+> **Amended 2026-10-14 (D57/D58, Phase 8B).** Section 3.3's example, `say.py "the room to the
+> left of the kitchen"` resolving to `kitchen`, is not a correct resolution: "the room to the
+> left of the kitchen" is `reception` (edge `kitchen right_of reception` in
+> `room_annotations.json`), not `kitchen`. The model parsed the command's anchor as
+> `meeting_room_a` rather than `kitchen`, and the hop from that (wrong) anchor landed on
+> `kitchen`, which happens to be a real room, masking the error. What the example actually
+> demonstrates, and still correctly demonstrates, is the relational hop executing end to end
+> through the full stack (`anchor_room`, `relation`, `n_relation_targets`, `grammar_version`
+> all populated and the BT completing); it does not demonstrate a correct resolution. See
+> `docs/reports/phase-8b-corrective.md` and PLAN.md section 11A. Body below is unchanged.
+
 ## 1. What this phase built
 
 - `include/semantic_waypoint_planner/bt_semantic_plugin.hpp`, `src/bt_semantic_plugin.cpp`:
