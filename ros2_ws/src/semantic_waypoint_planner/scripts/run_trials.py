@@ -315,6 +315,17 @@ def set_grammar_on(node: Node, value: bool) -> None:
     )
 
 
+def get_text_anchor(node: Node) -> bool:
+    """PLAN.md 11C.2: record the resolver's actual `text_anchor` parameter value in every run
+    record, rather than assuming it, since the shipped default lives in `planner_params.yaml`
+    and can be overridden at launch."""
+    result = subprocess.run(
+        ["ros2", "param", "get", "/llm_resolver_node_py", "text_anchor"],
+        check=True, capture_output=True, text=True,
+    )
+    return "true" in result.stdout.lower()
+
+
 def start_bag(bag_path: str) -> Optional[subprocess.Popen]:
     topics = ["/semantic_goal", "/clarification_request", "/cmd_vel", "/odom", "/tts_text"]
     proc = subprocess.Popen(
@@ -365,6 +376,7 @@ def main() -> int:
 
     set_grammar_on(node, args.grammar_on)
     time.sleep(0.5)
+    text_anchor_value = get_text_anchor(node)
 
     bag_proc = None
     if not args.no_bag:
@@ -432,6 +444,7 @@ def main() -> int:
                     "edit_distance": edit_distance,
                     "resolver_mode": row.get("resolver_mode"),
                     "grammar_on": args.grammar_on,
+                    "text_anchor": text_anchor_value,
                     "gate_threshold": args.gate_threshold,
                     "gate_passed": row.get("gate_passed"),
                     "bt_status": "SUCCESS" if row.get("gate_passed") else "FAILURE_FALLBACK",

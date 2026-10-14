@@ -155,12 +155,23 @@ of 8B's 2/30 spatial figure: for "the room to the left/right/near/adjacent to X"
 Phi-3 mini often fills the v2 grammar's `room` field with the final answer instead of the
 anchor X, so the resolver hops a second time from it, two hops past the correct room. The fix
 anchors the hop on the room named in the command text instead, taking e2e150 spatial
-resolution to 30/30 and wrong-room gate-passed actions to 0/140 when forced on. It ships with
-its default **off**, because the held-out replay (the corrected 500 benchmark and both
-calibration sessions, no inference re-run) shows a one-row net regression confined to
-`multi_hop` compound sentences, where the same "first cue, nearest room" rule picks up the
-wrong clause's room; session 2 false pass is unaffected. Also fixed: `offline_gate_comparison.py`
-was counting a "none" answer as acted-on, inflating its gate-off wrong-room figures.
+resolution to 30/30 and wrong-room gate-passed actions to 0/140 when forced on. It shipped with
+its default off, because the held-out replay (the corrected 500 benchmark and both
+calibration sessions, no inference re-run) showed a one-row net regression confined to
+`multi_hop` compound sentences on raw, uncapped top-1, where the same "first cue, nearest room"
+rule picks up the wrong clause's room; session 2 false pass was unaffected. Also fixed:
+`offline_gate_comparison.py` was counting a "none" answer as acted-on, inflating its gate-off
+wrong-room figures.
+
+**Phase 8D (`docs/reports/phase-8d-ship-text-anchor.md`, D65) ships the fix on.** A review found
+8C's decision rule measured the wrong quantity: production always runs behind the 0.85 gate, and
+under that gate the fix changes behaviour on exactly one of 800 held-out rows, where it removes
+a wrong action and adds none; all 7 `multi_hop` raw losses abstain below the gate rather than
+acting wrongly. The project owner chose to ship `text_anchor` on after seeing this gated
+evidence, disclosed as a decision made after the results rather than the outcome of 8C's frozen
+rule. Also corrected: the 8C offline Condition B versus C figure for the e2e150 confirmation run
+was a computation error (0.000 vs. 0.000 reported, 0.000 vs. 0.020 is correct: the gate catches
+3 `negation` rows resolving wrong at 0.798).
 
 ## Limitations
 

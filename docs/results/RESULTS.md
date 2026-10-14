@@ -22,6 +22,18 @@
 > (4494 vs. 3737 ms) stays an open, unexplained item (D63 finding 7), joined here by its own
 > 3797/5160 ms ROS-path figure, previously missing from this file (D63 finding 6).
 
+> **Amended 2026-10-14 (Phase 8D, `docs/reports/phase-8d-ship-text-anchor.md`, D65).** The
+> "ships off" decision above is reversed: `text_anchor` now ships **on** everywhere. 11B.5's rule
+> measured the corrected 500's raw top-1 without the gate, the wrong quantity for a shipping
+> decision, because production always runs behind the 0.85 gate. Under the gate, across all 800
+> held-out rows (500, session 1, session 2), the fix changes behaviour on exactly one row,
+> removing a wrong action and adding none (`docs/results/text_anchor_replay_v2.md`, PLAN.md
+> 11C.1). The project owner chose to ship on after seeing this gated evidence; this is disclosed
+> as a decision made after the results, not as following the frozen 11B.5 rule. Section 5.2's
+> offline Condition B versus C figure for the 8C diagnostic run (0.000 against 0.000) was also a
+> computation error: the corrected figure is 0.000 against 0.020 (3/150 `negation` rows wrong at
+> 0.798 without the gate), see section 5.3 and `docs/results/e2e150_report_8c.md`.
+
 This is the single place every measured number in the project traces back to. Every table below
 cites the JSONL or CSV file it is computed from, under `data/` unless noted; regenerable run
 output lives under the gitignored `data/runs/`, committed source data lives under
@@ -254,10 +266,12 @@ hopping twice, because the v2 grammar's `room` field often holds the model's fin
 the anchor the template asks for; the model was correct before the second hop on 18 of 18 local
 probe calls. The fix (`relations.apply_relational_hop`/`extract_text_anchor`, `text_anchor`
 parameter) takes e2e150 spatial resolution to 30/30 and wrong-room gate-passed actions to 0/140
-when forced on (`docs/results/e2e150_report_8c.md`); it ships with its default off because of a
-held-out regression elsewhere (`docs/results/text_anchor_replay.md`). This also means finding 2
-above and the "no measurable difference" headline were a symptom of the double hop, not an
-independent calibrator problem.
+when forced on (`docs/results/e2e150_report_8c.md`); it shipped with its default off because of a
+held-out regression elsewhere (`docs/results/text_anchor_replay.md`), **superseded by D65 (Phase
+8D): under the 0.85 gate the regression disappears (exactly one of 800 held-out rows changes,
+removing a wrong action), and the default now ships on, see section 5.3**. This also means
+finding 2 above and the "no measurable difference" headline were a symptom of the double hop,
+not an independent calibrator problem.
 
 **11A.6 calibrator diagnostic** (`docs/results/calibrator_diagnostic_e2e150.txt`): wrong passes
 have lower mean `raw_confidence` (0.904 vs. 0.955) and higher mean `token_entropy` and
@@ -328,15 +342,23 @@ D56 and MANIFEST.md).
 
 ### 5.3 Phase 8C: the spatial anchor fix, before and after (PLAN.md 11B, D64)
 
-**e2e150 (development set, `text_anchor` forced on for one diagnostic run only; the shipped
-default is off):**
+**e2e150 (`text_anchor` forced on for this one run; superseded by D65, see below, `text_anchor`
+is now the shipped default everywhere, so this is the shipped e2e150 measurement):**
 
 | | spatial resolver correct | wrong-room gate-passed actions (of 140) |
 |---|---|---|
 | before (8B, production) | 2/30 | 26 |
-| after (8C, diagnostic) | **30/30** | **0** |
+| after (8C, this run) | **30/30** | **0** |
 
 Full table: `docs/results/e2e150_report_8c.md`. Raw: `data/frozen/e2e150_production_8c.jsonl`.
+
+**Offline Condition B versus C on this run, corrected by D65.** 8C reported 0.000 against 0.000
+("the gate has nothing left to catch"); the gate-off figure was computed wrong (it reused the
+gate-on acted count instead of re-gating at 0.0). Recomputed with `e2e_report.py --regate`
+(PLAN.md 11C.3): gate on (0.85) acts on 140/150 with 0 wrong; gate off (0.0) acts on 143/150
+with 3 wrong (`negation` rows resolving to `meeting_room_b` at 0.798, below the gate). The
+corrected figure is **0.000 against 0.020**, not 0.000 against 0.000: the gate does catch
+something on this run. Full detail: `docs/results/e2e150_report_8c.md`.
 
 **Held-out replay, no inference re-run (`docs/results/text_anchor_replay.md`):**
 
@@ -345,16 +367,41 @@ Full table: `docs/results/e2e150_report_8c.md`. Raw: `data/frozen/e2e150_product
 | before | 0.732 | - | 0.043 |
 | after | 0.730 | 15 (6 gained, 7 lost, 2 wrong-to-wrong) | 0.043 |
 
-**Decision (PLAN.md 11B.5): `text_anchor` ships `false`.** Session 2 false pass clears the
-bound (<= 0.05), but the corrected 500's top-1 falls (rows gained minus lost = -1 < 0); every
-lost row is in `multi_hop`, where the fix's compound-sentence false positives (e.g. "storage"
-matching `storage_room`'s alias inside an unrelated "tool storage" phrase two clauses away from
-the actual anchor) outweigh its single-clause spatial gains. Not tuned against this data per
-11B.7; recorded as the reason for a future phase (a `multi_hop`-aware rule, or 16A O1's retrain)
-to revisit.
+**Decision (PLAN.md 11B.5): `text_anchor` shipped `false`. Superseded by D65 (below).** Session
+2 false pass cleared the bound (<= 0.05), but the corrected 500's raw top-1 fell (rows gained
+minus lost = -1 < 0); every lost row is in `multi_hop`, where the fix's compound-sentence false
+positives (e.g. "storage" matching `storage_room`'s alias inside an unrelated "tool storage"
+phrase two clauses away from the actual anchor) outweigh its single-clause spatial gains. Not
+tuned against this data per 11B.7.
 
 Raw data: `data/frozen/text_anchor_replay_500.jsonl`, `data/frozen/text_anchor_replay_session1.jsonl`,
 `data/frozen/text_anchor_replay_session2.jsonl`, `data/frozen/e2e150_production_8c.jsonl`.
+
+#### D65 (Phase 8D): `text_anchor` ships on, gated evidence from committed code
+
+11B.5's rule measured the corrected 500's raw top-1, uncapped. Production always runs behind
+the 0.85 gate, and under the gate the picture is different. From the committed replay
+(`ml/safenav_ml/replay_text_anchor.py`, extended for PLAN.md 11C.1,
+`docs/results/text_anchor_replay_v2.md`), for every row the fix changes, gated at 0.85:
+
+| held-out set | rows changed | changed rows acting at 0.85, before | after | net effect on actions |
+|---|---|---|---|---|
+| corrected 500 | 15 | 1 | 0 | 1 wrong action removed |
+| session 1 | 15 | 0 | 0 | none |
+| session 2 | 10 | 0 | 0 | none |
+
+Across all 800 held-out rows the fix changes the gated system's behaviour on exactly one row
+(`p0143`: a wrong `meeting_room_a` at 0.949 becomes an abstention). It adds no wrong action and
+removes no correct one. All 7 `multi_hop` raw losses (11B.3) stay below the threshold either way
+(0.256 to 0.753); before the fix they "passed" only because the model had anchored on an edgeless
+sub location and abstained by accident, not because the old behaviour was actually right.
+Against keeping the fix off: the double hop it replaces passes 25 wrong spatial rooms at 0.90 to
+0.95 on e2e150 (section 5.1). **The project owner chose to ship `text_anchor` on after seeing
+this gated evidence, reversing 11B.5's rule rather than following it; this is disclosed as a
+decision made after the results, not as the frozen rule's own outcome.** `text_anchor: true` is
+now the one value in `planner_params.yaml`, the `ResolverCore` constructor default and the
+node's declared default (PLAN.md 11C.2). Raw data: `data/frozen/text_anchor_replay_500_v2.jsonl`,
+`data/frozen/text_anchor_replay_session1_v2.jsonl`, `data/frozen/text_anchor_replay_session2_v2.jsonl`.
 
 ## 6. Specification evaluation metrics table (filled in)
 
@@ -366,7 +413,7 @@ Raw data: `data/frozen/text_anchor_replay_500.jsonl`, `data/frozen/text_anchor_r
 | Gated end-to-end accuracy | 0.72 (provisional, D53) | section 2 |
 | Resolver latency p90 (deployed backend) | 3497-4272 ms cold (5A, isolated); 4494 ms cold (8B, isolated remeasure, a second confirmation); 7883-10373 ms under Phase 8's concurrent-GPU-load measurement (not citable against the gate, see section 3) | section 3 |
 | 150-run e2e validation, grammar on | 0/150 out-of-graph outputs (required, met) | section 5 |
-| Gate on vs. gate off, e2e150 wrong-room action rate | 0.173 (gate on, rescored) vs. 0.187 (gate off, 8B rerun): no measurable difference (8B, section 5.1). Supersedes the withdrawn 0.772 vs. 0.080 reached-intended figure (D57), which measured a diverging simulator. Phase 8C found the cause (a resolver double hop, not a calibrator problem) and fixed it; with the fix forced on, both drop to 0.000 (section 5.3), but it ships off by default (11B.5) |
+| Gate on vs. gate off, e2e150 wrong-room action rate | 0.173 (gate on, rescored) vs. 0.187 (gate off, 8B rerun): no measurable difference (8B, section 5.1). Supersedes the withdrawn 0.772 vs. 0.080 reached-intended figure (D57), which measured a diverging simulator. Phase 8C found the cause (a resolver double hop, not a calibrator problem) and fixed it; with the fix on (the shipped default as of D65), gate on drops to 0.000 and gate off to 0.020, corrected by D65 from the wrong 0.000 vs. 0.000 figure (section 5.3) |
 
 This table reproduces the shape of the metrics table in `docs/reference/Review_2_Phase_2.docx`,
 which was drafted inside this project and never approved at Review 2 (D54); its numbers carry

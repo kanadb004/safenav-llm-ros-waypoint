@@ -84,6 +84,7 @@ def run(core: ResolverCore, rows: List[dict], session: int) -> List[dict]:
             "edit_distance": features[4],
             "resolver_mode": result.mode,
             "grammar_on": PRODUCTION["grammar_on"],
+            "text_anchor": core.text_anchor,
             "anchor_room": result.anchor_room,
             "relation": result.relation,
             "n_relation_targets": result.n_relation_targets,

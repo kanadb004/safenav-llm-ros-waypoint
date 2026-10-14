@@ -59,9 +59,24 @@ def _frac(num: int, den: int) -> Optional[float]:
     return (num / den) if den else None
 
 
-def summarize(rows: List[dict], label: str) -> Dict:
+def _acted(row: dict, regate: Optional[float]) -> bool:
+    """PLAN.md 11C.3: with ``--regate``, acted means a real room (``attempted_room`` not
+    ``none``/empty) whose ``calibrated_confidence`` clears the given threshold, computed from
+    the row's own stored columns rather than trusting the run's own ``gate_passed`` field (the
+    8C Condition B versus C figure was wrong because ``gate_passed`` alone does not say whether
+    the row has a real room, D65 finding 2). Without ``--regate``, ``gate_passed`` as recorded."""
+    if regate is None:
+        return bool(row.get("gate_passed"))
+    attempted = row.get("attempted_room")
+    if not attempted or attempted == "none":
+        return False
+    confidence = row.get("calibrated_confidence")
+    return confidence is not None and confidence >= regate
+
+
+def summarize(rows: List[dict], label: str, regate: Optional[float] = None) -> Dict:
     n = len(rows)
-    gate_passed_rows = [r for r in rows if r.get("gate_passed")]
+    gate_passed_rows = [r for r in rows if _acted(r, regate)]
     n_gate_passed = len(gate_passed_rows)
 
     # acted rate: gate_passed / n
@@ -112,7 +127,7 @@ def summarize(rows: List[dict], label: str) -> Dict:
     by_category = {}
     for cat in CATEGORIES:
         cat_rows = [r for r in rows if r.get("category") == cat]
-        cat_gate_passed = [r for r in cat_rows if r.get("gate_passed")]
+        cat_gate_passed = [r for r in cat_rows if _acted(r, regate)]
         cat_wrong = [r for r in cat_gate_passed if _attempted(r) != r.get("intended_room")]
         by_category[cat] = {
             "n": len(cat_rows),
@@ -217,13 +232,24 @@ def main() -> int:
     parser.add_argument("--gate-off")
     parser.add_argument("--out", required=True)
     parser.add_argument("--out-json", default=None)
+    parser.add_argument(
+        "--regate", type=float, default=None,
+        help="PLAN.md 11C.3: recompute acted as attempted_room not none and "
+             "calibrated_confidence >= this threshold, instead of reading gate_passed.",
+    )
     args = parser.parse_args()
 
-    summaries = [summarize(load_jsonl(args.production), "production (grammar on, gate on)")]
+    summaries = [
+        summarize(load_jsonl(args.production), "production (grammar on, gate on)", args.regate)
+    ]
     if args.grammar_off:
-        summaries.append(summarize(load_jsonl(args.grammar_off), "grammar off (gate on)"))
+        summaries.append(
+            summarize(load_jsonl(args.grammar_off), "grammar off (gate on)", args.regate)
+        )
     if args.gate_off:
-        summaries.append(summarize(load_jsonl(args.gate_off), "gate off (threshold 0.0)"))
+        summaries.append(
+            summarize(load_jsonl(args.gate_off), "gate off (threshold 0.0)", args.regate)
+        )
 
     md = render_markdown(summaries)
     os.makedirs(os.path.dirname(args.out), exist_ok=True)

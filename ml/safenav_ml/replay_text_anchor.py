@@ -78,7 +78,12 @@ def replay_room(graph: AnnotationGraph, cues: List[str], command: str, relation:
                  anchor_room: str, resolved_room: str) -> tuple:
     """Returns ``(after_room, anchor_used, anchor_source)``. Rows where the model never
     attempted a hop (``relation == "none"`` or no cached anchor) are unaffected by the fix:
-    ``after_room`` equals the stored ``resolved_room``."""
+    ``after_room`` equals the stored ``resolved_room``.
+
+    PLAN.md 11C.0 finding 4: ``anchor_room`` here is the cached ``model_room`` (the model's own
+    raw ``room`` field, v1 semantics), not the anchor the hop actually used. The caller must
+    keep both: ``anchor_room`` as ``model_room`` and this function's ``anchor_used`` return
+    value as the room the hop traversed from."""
     if relation == "none" or not anchor_room or anchor_room == "none":
         return _room_or_none(resolved_room), anchor_room, ""
     after_room, anchor_used, anchor_source, _n = apply_relational_hop(
@@ -87,11 +92,25 @@ def replay_room(graph: AnnotationGraph, cues: List[str], command: str, relation:
     return _room_or_none(after_room), anchor_used, anchor_source
 
 
+def calibrate_for_room(graph: AnnotationGraph, calibrator: Calibrator, raw_confidence: float,
+                        token_entropy: float, room: str, command_norm: str) -> float:
+    """Calibrated confidence for a candidate final ``room``, holding ``raw_confidence`` and
+    ``token_entropy`` fixed (the model output does not change) and recomputing only the
+    room-dependent ``edit_distance`` feature, the corrected-500 feature path
+    ``train_calibrator.py``'s ``gated_benchmark_500`` uses."""
+    room_name = None if room in (None, "none") else room
+    aliases = graph.get_room(room_name).aliases if room_name and graph.get_room(room_name) else []
+    edit_distance = min_edit_distance(room_name, aliases, command_norm)
+    feat = [raw_confidence, token_entropy, float(len(graph.canonical_names)),
+            float(len(command_norm)), float(edit_distance)]
+    return calibrator.calibrate(raw_confidence, feat)
+
+
 # ---------------------------------------------------------------------------
 # Corrected 500 benchmark
 # ---------------------------------------------------------------------------
 
-def build_500_replay(graph: AnnotationGraph, cues: List[str]) -> List[dict]:
+def build_500_replay(graph: AnnotationGraph, cues: List[str], calibrator: Calibrator) -> List[dict]:
     run_rows = {r["id"]: r for r in load_jsonl(PHASE5A_RUN)}
     labeled_rows = load_jsonl(BENCHMARK_V2)
 
@@ -102,14 +121,14 @@ def build_500_replay(graph: AnnotationGraph, cues: List[str]) -> List[dict]:
         if run_row is None:
             continue
         relation = run_row.get("relation", "none")
-        anchor_room = run_row.get("anchor_room", "")
+        model_room = run_row.get("anchor_room", "")
         command = run_row["command"]
         before = _room_or_none(run_row["resolved_room"])
         # Sanity check: replaying with the fix disabled must reproduce the cached output
         # exactly, confirming this replay is a faithful stand-in for re-running the resolver.
-        if relation != "none" and anchor_room and anchor_room != "none":
+        if relation != "none" and model_room and model_room != "none":
             reproduced = _room_or_none(
-                apply_relational_hop(graph, command, relation, anchor_room, False, cues)[0]
+                apply_relational_hop(graph, command, relation, model_room, False, cues)[0]
             )
             if reproduced != before:
                 raise RuntimeError(
@@ -118,7 +137,14 @@ def build_500_replay(graph: AnnotationGraph, cues: List[str]) -> List[dict]:
                     "this run"
                 )
         after, anchor_used, anchor_source = replay_room(
-            graph, cues, command, relation, anchor_room, before
+            graph, cues, command, relation, model_room, before
+        )
+        command_norm = normalize_command(command)
+        before_calibrated = calibrate_for_room(
+            graph, calibrator, run_row["raw_confidence"], run_row["token_entropy"], before, command_norm
+        )
+        after_calibrated = calibrate_for_room(
+            graph, calibrator, run_row["raw_confidence"], run_row["token_entropy"], after, command_norm
         )
         out.append({
             "id": rid,
@@ -127,10 +153,13 @@ def build_500_replay(graph: AnnotationGraph, cues: List[str]) -> List[dict]:
             "expected": labeled["expected"],
             "before": before,
             "after": after,
-            "anchor_room": anchor_room,
+            "model_room": model_room,
+            "anchor_used": anchor_used,
             "anchor_source": anchor_source,
             "raw_confidence": run_row["raw_confidence"],
             "token_entropy": run_row["token_entropy"],
+            "before_calibrated": before_calibrated,
+            "after_calibrated": after_calibrated,
         })
     return out
 
@@ -139,19 +168,47 @@ def _top1_rows(rows: List[dict], room_key: str) -> List[dict]:
     return [{"predicted": r[room_key], "expected": r["expected"], "category": r["category"]} for r in rows]
 
 
-def gated_500(rows: List[dict], room_key: str, graph: AnnotationGraph, calibrator: Calibrator) -> dict:
+def gated_500(rows: List[dict], room_key: str, calibrated_key: str, calibrator: Calibrator) -> dict:
     out_rows = []
     for r in rows:
-        room = None if r[room_key] in (None, "none") else r[room_key]
-        aliases = graph.get_room(room).aliases if room and graph.get_room(room) else []
-        command_norm = normalize_command(r["command"])
-        edit_distance = min_edit_distance(room, aliases, command_norm)
-        feat = [r["raw_confidence"], r["token_entropy"], float(len(graph.canonical_names)),
-                 float(len(command_norm)), float(edit_distance)]
-        calibrated = calibrator.calibrate(r["raw_confidence"], feat)
-        predicted = r[room_key] if calibrated >= calibrator.threshold else "none"
+        predicted = r[room_key] if r[calibrated_key] >= calibrator.threshold else "none"
         out_rows.append({"predicted": predicted, "expected": r["expected"], "category": r["category"]})
     return {"n": len(out_rows), "top1": metrics.top1(out_rows), "per_category": metrics.per_category_top1(out_rows)}
+
+
+def gated_changed_table(changed_rows: List[dict], before_room_key: str, after_room_key: str,
+                         before_cal_key: str, after_cal_key: str, label_key: str,
+                         threshold: float = GATE_THRESHOLD) -> dict:
+    """PLAN.md 11C.1: for the rows the fix changes, the gated (0.85) effect on actions, not the
+    raw top-1 11B.5 measured. An "action" is a real room clearing the threshold; wrong/correct
+    added/removed is computed per row from its own before/after gated status, so a row that
+    never acts either way contributes to neither count."""
+    acting_before = acting_after = 0
+    wrong_added = wrong_removed = correct_added = correct_removed = 0
+    for r in changed_rows:
+        before_room, after_room = r[before_room_key], r[after_room_key]
+        expected = r[label_key]
+        acted_before = before_room != "none" and r[before_cal_key] >= threshold
+        acted_after = after_room != "none" and r[after_cal_key] >= threshold
+        acting_before += int(acted_before)
+        acting_after += int(acted_after)
+        wrong_before = acted_before and before_room != expected
+        wrong_after = acted_after and after_room != expected
+        correct_before = acted_before and before_room == expected
+        correct_after = acted_after and after_room == expected
+        wrong_added += int(wrong_after and not wrong_before)
+        wrong_removed += int(wrong_before and not wrong_after)
+        correct_added += int(correct_after and not correct_before)
+        correct_removed += int(correct_before and not correct_after)
+    return {
+        "rows_changed": len(changed_rows),
+        "acting_before": acting_before,
+        "acting_after": acting_after,
+        "wrong_added": wrong_added,
+        "wrong_removed": wrong_removed,
+        "correct_added": correct_added,
+        "correct_removed": correct_removed,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -164,10 +221,10 @@ def build_session_replay(path: str, graph: AnnotationGraph, cues: List[str],
     out = []
     for r in rows:
         relation = r.get("relation", "none")
-        anchor_room = r.get("anchor_room", "")
+        model_room = r.get("anchor_room", "")
         command = r["command"]
         before = _room_or_none(r.get("resolved_room"))
-        after, anchor_used, anchor_source = replay_room(graph, cues, command, relation, anchor_room, before)
+        after, anchor_used, anchor_source = replay_room(graph, cues, command, relation, model_room, before)
 
         before_room = None if before == "none" else before
         before_aliases = graph.get_room(before_room).aliases if before_room and graph.get_room(before_room) else []
@@ -190,6 +247,8 @@ def build_session_replay(path: str, graph: AnnotationGraph, cues: List[str],
             "intended_room": r["intended_room"],
             "before_room": before,
             "after_room": after,
+            "model_room": model_room,
+            "anchor_used": anchor_used,
             "anchor_source": anchor_source,
             "before_edit_distance": r["edit_distance"],
             "after_edit_distance": after_edit_distance,
@@ -248,9 +307,31 @@ def _changed_rows_session(rows: List[dict]) -> List[dict]:
     return changed
 
 
+def _fmt_gated_changed(label: str, g: dict) -> List[str]:
+    net_bits = []
+    if g["wrong_removed"]:
+        net_bits.append(f"{g['wrong_removed']} wrong action(s) removed")
+    if g["wrong_added"]:
+        net_bits.append(f"{g['wrong_added']} wrong action(s) added")
+    if g["correct_added"]:
+        net_bits.append(f"{g['correct_added']} correct action(s) added")
+    if g["correct_removed"]:
+        net_bits.append(f"{g['correct_removed']} correct action(s) removed")
+    net = ", ".join(net_bits) if net_bits else "none"
+    return [
+        f"| {label} | {g['rows_changed']} | {g['acting_before']} | {g['acting_after']} | {net} |"
+    ]
+
+
 def render(rows_500, gated_before, gated_after, session1_rows, session2_rows,
            session2_before_gate, session2_after_gate) -> str:
-    lines = ["# PLAN.md 11B.3: text anchor fix, held-out replay (D64)\n"]
+    lines = ["# PLAN.md 11C.1: text anchor fix, held-out replay v2 (D65)\n"]
+    lines.append(
+        "Extends the 8C replay (`docs/results/text_anchor_replay.md`, D64) with the gated "
+        "(0.85) effect on every held-out set's changed rows, since production always runs "
+        "behind the gate (D65). The 8C replay's raw top-1 tables below are unchanged; this is "
+        "an addition, not a correction of them.\n"
+    )
 
     raw_before = metrics.top1(_top1_rows(rows_500, "before"))
     raw_after = metrics.top1(_top1_rows(rows_500, "after"))
@@ -284,15 +365,28 @@ def render(rows_500, gated_before, gated_after, session1_rows, session2_rows,
         lines.append(f"| {cat} | {b:.3f} | {a:.3f} |")
     lines.append("")
     lines.append("Every changed row:\n")
-    lines.append("| id | category | before | after | expected | anchor source | direction |")
-    lines.append("|---|---|---|---|---|---|---|")
+    lines.append("| id | category | before | after | expected | model_room | anchor_used | "
+                 "anchor source | before calibrated | after calibrated | direction |")
+    lines.append("|---|---|---|---|---|---|---|---|---|---|---|")
     for c in sorted(changed_500, key=lambda r: r["id"]):
         lines.append(
             f"| {c['id']} | {c['category']} | {c['before']} | {c['after']} | {c['expected']} | "
-            f"{c['anchor_source']} | {c['direction']} |"
+            f"{c['model_room']} | {c['anchor_used']} | {c['anchor_source']} | "
+            f"{c['before_calibrated']:.3f} | {c['after_calibrated']:.3f} | {c['direction']} |"
         )
     lines.append("")
 
+    gated_500_changed = gated_changed_table(
+        changed_500, "before", "after", "before_calibrated", "after_calibrated", "expected"
+    )
+    lines.append(f"### Gated (0.85) effect on actions, changed rows only (PLAN.md 11C.1)\n")
+    lines.append("| held-out set | rows changed | changed rows acting at 0.85, before | after | "
+                 "net effect on actions |")
+    lines.append("|---|---|---|---|---|")
+    lines.extend(_fmt_gated_changed("corrected 500", gated_500_changed))
+    lines.append("")
+
+    session_gated = {}
     for label, rows in (("session 1", session1_rows), ("session 2", session2_rows)):
         changed = _changed_rows_session(rows)
         to_c = sum(1 for c in changed if c["direction"] == "to correct")
@@ -300,18 +394,32 @@ def render(rows_500, gated_before, gated_after, session1_rows, session2_rows,
         lines.append(f"## Calibration {label} (n={len(rows)})\n")
         lines.append(f"Rows changed: {len(changed)} ({to_c} to correct, {from_c} from correct, "
                      f"{len(changed) - to_c - from_c} wrong to wrong).\n")
-        lines.append("| run_id | category | before room | after room | intended | "
-                     "before edit_distance | after edit_distance | before calibrated | "
-                     "after calibrated | anchor source | direction |")
-        lines.append("|---|---|---|---|---|---|---|---|---|---|---|")
+        lines.append("| run_id | category | before room | after room | intended | model_room | "
+                     "anchor_used | before edit_distance | after edit_distance | "
+                     "before calibrated | after calibrated | anchor source | direction |")
+        lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
         for c in sorted(changed, key=lambda r: r["run_id"]):
             lines.append(
                 f"| {c['run_id']} | {c['category']} | {c['before_room']} | {c['after_room']} | "
-                f"{c['intended_room']} | {c['before_edit_distance']} | {c['after_edit_distance']} | "
+                f"{c['intended_room']} | {c['model_room']} | {c['anchor_used']} | "
+                f"{c['before_edit_distance']} | {c['after_edit_distance']} | "
                 f"{c['before_calibrated']:.3f} | {c['after_calibrated']:.3f} | {c['anchor_source']} | "
                 f"{c['direction']} |"
             )
         lines.append("")
+        session_gated[label] = gated_changed_table(
+            changed, "before_room", "after_room", "before_calibrated", "after_calibrated",
+            "intended_room"
+        )
+
+    lines.append("### Gated (0.85) effect on actions, changed rows only, sessions "
+                 "(PLAN.md 11C.1)\n")
+    lines.append("| held-out set | rows changed | changed rows acting at 0.85, before | after | "
+                 "net effect on actions |")
+    lines.append("|---|---|---|---|---|")
+    for label in ("session 1", "session 2"):
+        lines.extend(_fmt_gated_changed(label, session_gated[label]))
+    lines.append("")
 
     lines.append(f"## Session 2 gate rates at {GATE_THRESHOLD}\n")
     lines.append("| | false pass rate | false rejection rate | n correct / n |")
@@ -330,7 +438,7 @@ def render(rows_500, gated_before, gated_after, session1_rows, session2_rows,
 
     gain = (raw_after - raw_before) >= 0.0 if raw_before is not None else False
     rows_gained_minus_lost = to_correct - from_correct
-    lines.append("## PLAN.md 11B.5 decision rule inputs\n")
+    lines.append("## PLAN.md 11B.5 decision rule inputs (superseded by D65, kept as measured)\n")
     lines.append(f"- session 2 false pass at {GATE_THRESHOLD}, after: "
                  f"{session2_after_gate['false_pass_rate']:.3f} "
                  f"({'<=' if session2_after_gate['false_pass_rate'] <= 0.05 else '>'} 0.05)")
@@ -338,7 +446,27 @@ def render(rows_500, gated_before, gated_after, session1_rows, session2_rows,
                  f"({'>= 0' if rows_gained_minus_lost >= 0 else '< 0'})")
     lines.append("")
 
-    return "\n".join(lines)
+    no_wrong_added = (
+        gated_500_changed["wrong_added"] == 0
+        and session_gated["session 1"]["wrong_added"] == 0
+        and session_gated["session 2"]["wrong_added"] == 0
+    )
+    no_correct_removed = (
+        gated_500_changed["correct_removed"] == 0
+        and session_gated["session 1"]["correct_removed"] == 0
+        and session_gated["session 2"]["correct_removed"] == 0
+    )
+    false_pass_ok = session2_after_gate["false_pass_rate"] <= 0.05
+    stop_rule_clears = no_wrong_added and no_correct_removed and false_pass_ok
+    lines.append("## PLAN.md 11C.1 stop rule (11C.0 finding 1 reproduction)\n")
+    lines.append(f"- no wrong action added at 0.85 on any held-out set: {no_wrong_added}")
+    lines.append(f"- no correct action removed at 0.85 on any held-out set: {no_correct_removed}")
+    lines.append(f"- session 2 false pass at 0.85 at or below 0.05: {false_pass_ok} "
+                 f"({session2_after_gate['false_pass_rate']:.3f})")
+    lines.append(f"- **stop rule clears: {stop_rule_clears}**")
+    lines.append("")
+
+    return "\n".join(lines), stop_rule_clears
 
 
 def _write_jsonl(path: str, rows: List[dict]) -> None:
@@ -350,18 +478,18 @@ def _write_jsonl(path: str, rows: List[dict]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--out", default=os.path.join(REPO_ROOT, "docs", "results", "text_anchor_replay.md"))
+    parser.add_argument("--out", default=os.path.join(REPO_ROOT, "docs", "results", "text_anchor_replay_v2.md"))
     parser.add_argument("--out-rows-dir", default=os.path.join(REPO_ROOT, "data", "runs"),
-                         help="Row-level replay JSONL files (11B.3/11B.6 data freeze).")
+                         help="Row-level replay JSONL files (11B.3/11B.6/11C.1 data freeze).")
     args = parser.parse_args()
 
     graph = AnnotationGraph.from_file(ANNOTATIONS_PATH)
     cues = load_cues()
     calibrator = Calibrator(CALIBRATOR_PATH)
 
-    rows_500 = build_500_replay(graph, cues)
-    gated_before = gated_500(rows_500, "before", graph, calibrator)
-    gated_after = gated_500(rows_500, "after", graph, calibrator)
+    rows_500 = build_500_replay(graph, cues, calibrator)
+    gated_before = gated_500(rows_500, "before", "before_calibrated", calibrator)
+    gated_after = gated_500(rows_500, "after", "after_calibrated", calibrator)
 
     session1_rows = build_session_replay(SESSION1_RUN, graph, cues, calibrator)
     session2_rows = build_session_replay(SESSION2_RUN, graph, cues, calibrator)
@@ -369,7 +497,7 @@ def main() -> int:
     session2_before_gate = gate_rates(session2_rows, "before_room", "before_calibrated", GATE_THRESHOLD)
     session2_after_gate = gate_rates(session2_rows, "after_room", "after_calibrated", GATE_THRESHOLD)
 
-    text = render(
+    text, stop_rule_clears = render(
         rows_500, gated_before, gated_after, session1_rows, session2_rows,
         session2_before_gate, session2_after_gate,
     )
@@ -380,10 +508,18 @@ def main() -> int:
         f.write(text)
     print(f"\nwrote {args.out}")
 
-    _write_jsonl(os.path.join(args.out_rows_dir, "text_anchor_replay_500.jsonl"), rows_500)
-    _write_jsonl(os.path.join(args.out_rows_dir, "text_anchor_replay_session1.jsonl"), session1_rows)
-    _write_jsonl(os.path.join(args.out_rows_dir, "text_anchor_replay_session2.jsonl"), session2_rows)
+    _write_jsonl(os.path.join(args.out_rows_dir, "text_anchor_replay_500_v2.jsonl"), rows_500)
+    _write_jsonl(os.path.join(args.out_rows_dir, "text_anchor_replay_session1_v2.jsonl"), session1_rows)
+    _write_jsonl(os.path.join(args.out_rows_dir, "text_anchor_replay_session2_v2.jsonl"), session2_rows)
     print(f"wrote row-level replay files to {args.out_rows_dir}")
+
+    if not stop_rule_clears:
+        print(
+            "\nPLAN.md 11C.1 STOP RULE: committed replay does not reproduce 11C.0 finding 1. "
+            "Do not change any default; report this discrepancy.",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 

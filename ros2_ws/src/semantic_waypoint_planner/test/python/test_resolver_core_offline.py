@@ -1,8 +1,11 @@
 """Fast path, edit distance, and feature vector tests that need no model (PLAN.md Phase 3)."""
 
+import ast
+import inspect
 import os
 
 import pytest
+import yaml
 
 from semantic_waypoint_planner import resolver_core as resolver_core_module
 from semantic_waypoint_planner.graph import AnnotationGraph
@@ -257,3 +260,44 @@ def test_features_vector_order():
     assert vec[2] == 30.0
     assert vec[3] == float(len(normalize_command("go to the kitchen")))
     assert vec[4] == 0.0
+
+
+PACKAGE_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+PLANNER_PARAMS_PATH = os.path.join(PACKAGE_ROOT, "config", "planner_params.yaml")
+LLM_RESOLVER_SCRIPT_PATH = os.path.join(PACKAGE_ROOT, "scripts", "llm_resolver.py")
+
+
+def _declared_text_anchor_default(script_path: str) -> bool:
+    """PLAN.md 11C.2: the node's declared default for ``text_anchor``, read from the source by
+    AST (``declare_parameter("text_anchor", True)``) so this test needs no rclpy import."""
+    with open(script_path, "r", encoding="utf-8") as f:
+        tree = ast.parse(f.read(), filename=script_path)
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "declare_parameter"
+            and len(node.args) >= 2
+            and isinstance(node.args[0], ast.Constant)
+            and node.args[0].value == "text_anchor"
+        ):
+            default_arg = node.args[1]
+            if isinstance(default_arg, ast.Constant):
+                return bool(default_arg.value)
+            raise ValueError(f"non-constant text_anchor default: {ast.dump(default_arg)}")
+    raise AssertionError("no declare_parameter(\"text_anchor\", ...) call found")
+
+
+def test_text_anchor_default_agrees_in_yaml_core_and_node():
+    """PLAN.md 11C.2 (D65): the shipped default must be the same in every entry point. The
+    ``ResolverCore`` constructor default, the node's declared default, and
+    ``planner_params.yaml`` must all agree."""
+    core_default = inspect.signature(ResolverCore.__init__).parameters["text_anchor"].default
+    node_default = _declared_text_anchor_default(LLM_RESOLVER_SCRIPT_PATH)
+    with open(PLANNER_PARAMS_PATH, "r", encoding="utf-8") as f:
+        yaml_default = yaml.safe_load(f)["llm_resolver_node_py"]["ros__parameters"]["text_anchor"]
+
+    assert core_default is True
+    assert node_default is True
+    assert yaml_default is True
+    assert core_default == node_default == yaml_default

@@ -90,6 +90,7 @@ def run(core: ResolverCore, rows: List[dict], backend_name: str, grammar_on: boo
             "resolver_mode": result.mode,
             "mode": result.mode,
             "grammar_on": grammar_on,
+            "text_anchor": core.text_anchor,
             "out_of_graph": result.out_of_graph,
             "malformed": result.room is None,
             "top_k_rooms": [name for name, _ in result.room_ranking],
