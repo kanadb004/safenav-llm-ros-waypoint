@@ -25,7 +25,7 @@ Status legend: `[ ]` not started, `[~]` in progress, `[x]` merged to main.
 | 5A | Corrective: cue gating, benchmark re-audit, latency re-measure | [x] | #18 | #19 |
 | 6 | BT plugin, semantic goal node, end to end in sim | [x] | #20 | #21 |
 | 7 | Confidence calibration pipeline | [x] | #22 | #23 |
-| 8 | E2E validation, ablations, final results | [~] | #24 | |
+| 8 | E2E validation, ablations, final results | [~] | #24 | #25 |
 | 9 | Hardware readiness (no robot required) | [ ] | | |
 | 10 | Hardware bring-up (deferred until hardware is present) | [ ] | | |
 
