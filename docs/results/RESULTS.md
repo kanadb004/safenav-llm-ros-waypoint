@@ -228,9 +228,9 @@ set is not a threshold that is too strict, it is that wrong answers already carr
 clearing confidence.
 
 **The gate-off suite's e2e latency numbers are not a clean measurement of nominal drive time**
-and should not be read as "the system is this slow without the gate." `data/runs/
-e2e150_gate_off.jsonl` shows 16 of 50 rows (32%) taking 60 s to over 20 minutes, and the Nav2
-log for that window (`/tmp/launch2.log`, not committed) shows long alternating `spin`/`backup`
+and should not be read as "the system is this slow without the gate." `data/frozen/
+phase8_e2e150_gate_off.jsonl` shows 16 of 50 rows (32%) taking 60 s to over 20 minutes, and the
+Nav2 log for that window (`/tmp/launch2.log`, not committed) shows long alternating `spin`/`backup`
 recovery-behavior loops, not a single slow drive. Grammar-off's e2e p99 (82.7 s) and the
 production suite's own (76.0 s) also exceed what distance alone explains, pointing at the same
 mechanism to a lesser degree: all three suites were run back to back against one continuous
