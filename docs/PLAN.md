@@ -27,7 +27,7 @@ Status legend: `[ ]` not started, `[~]` in progress, `[x]` merged to main.
 | 7 | Confidence calibration pipeline | [x] | #22 | #23 |
 | 8 | E2E validation, ablations, final results | [x] | #24 | #25 |
 | 8B | Corrective: e2e150 rescoring, clean reruns, claim corrections (section 11A) | [x] | #26 | #27 |
-| 8C | Spatial anchor fix and 8B corrections (section 11B) | [ ] | #28 | |
+| 8C | Spatial anchor fix and 8B corrections (section 11B) | [x] | #28 | #29 |
 | 9 | Hardware readiness (no robot required) | [ ] | | |
 | 10 | Hardware bring-up (deferred until hardware is present) | [ ] | | |
 
@@ -45,7 +45,7 @@ with other work.
 | 7 Calibration | 0.75 d | ~20 min | |
 | 8 E2E validation and results | 0.75 d | ~3.5 h (300 loopback runs) | merged #25, claims under correction (D57) |
 | 8B Corrective pass (section 11A) | 0.75 d | ~3.5 h (450 loopback runs, isolated latency) | merged #27, wall clock 3 h 51 min |
-| 8C Spatial anchor fix (section 11B) | 0.5 d | ~1 h (150 loopback runs; held-out sets replayed offline) | next |
+| 8C Spatial anchor fix (section 11B) | 0.5 d | ~1 h (150 loopback runs; held-out sets replayed offline) | merged #29 |
 | 9 Hardware readiness | 0.5 d | none | |
 
 Phase 5 merged having met every engineering DoD item and missed both its accuracy gate (top-1
