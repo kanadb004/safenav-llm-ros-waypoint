@@ -27,6 +27,7 @@ Status legend: `[ ]` not started, `[~]` in progress, `[x]` merged to main.
 | 7 | Confidence calibration pipeline | [x] | #22 | #23 |
 | 8 | E2E validation, ablations, final results | [x] | #24 | #25 |
 | 8B | Corrective: e2e150 rescoring, clean reruns, claim corrections (section 11A) | [x] | #26 | #27 |
+| 8C | Spatial anchor fix and 8B corrections (section 11B) | [ ] | | |
 | 9 | Hardware readiness (no robot required) | [ ] | | |
 | 10 | Hardware bring-up (deferred until hardware is present) | [ ] | | |
 
@@ -43,7 +44,8 @@ with other work.
 | 6 BT plugin and E2E | 1.25 d | none | |
 | 7 Calibration | 0.75 d | ~20 min | |
 | 8 E2E validation and results | 0.75 d | ~3.5 h (300 loopback runs) | merged #25, claims under correction (D57) |
-| 8B Corrective pass (section 11A) | 0.75 d | ~3.5 h (450 loopback runs, isolated latency) | next |
+| 8B Corrective pass (section 11A) | 0.75 d | ~3.5 h (450 loopback runs, isolated latency) | merged #27, wall clock 3 h 51 min |
+| 8C Spatial anchor fix (section 11B) | 0.5 d | ~1 h (150 loopback runs; held-out sets replayed offline) | next |
 | 9 Hardware readiness | 0.5 d | none | |
 
 Phase 5 merged having met every engineering DoD item and missed both its accuracy gate (top-1
@@ -56,7 +58,8 @@ session without blocking anything, which puts the critical path at 3.75 days.
 
 Section 16A holds optional scope that is budgeted at zero. It is attempted only if Phase 8 and
 Phase 9 are merged and time is left over, and it never displaces either. Phase 8B (section 11A,
-D57) counts as part of Phase 8 for this rule: 16A waits for 8B as well.
+D57) counts as part of Phase 8 for this rule: 16A waits for 8B as well. Phase 8C (section 11B,
+D63) counts the same way.
 
 ## 0. Ground rules that apply to every phase
 
@@ -193,6 +196,12 @@ Phase 8's gate-on versus gate-off figure was a navigation artifact, not a gate e
 corrected comparison (wrong-room action rate, not reached-intended) shows the gate making
 essentially no measurable difference on this command set, consistent with the gate passing
 25 of 30 spatial commands at calibrated confidence 0.90 to 0.95 regardless of threshold.
+
+**Corrected by D63 (2026-10-14).** The two e2e150 rows cite D58; the result is D62. The last
+sentence above locates the cause in the gate. A review of 8B found most of the wrong spatial
+passes come from the resolver applying the relational hop twice (the model puts the answer in
+the anchor field), so they are confident because the model's first answer is correct. Section
+11B (Phase 8C) fixes and re-measures it; these rows stay as 8B measured them.
 
 **One metric is currently a miss: latency.** Everything else is met, favourable against its
 literature anchor, reported without a gate, or not yet measured. The gated accuracy row is the
@@ -1029,6 +1038,11 @@ on any feature. Do not retrain, re-threshold, or add features. This feeds 16A O1
 report notes that a 26 of 140 wrong-pass rate on relational commands is evidence against
 relaxing the false pass bound to 0.15 in O2.
 
+**Corrected by D63 (2026-10-14, after 8B merged).** 8B ran this as written and concluded the
+wrong spatial passes are not separable and are evidence for O1. The cause is a resolver double
+hop (section 11B.0 finding 1), which no calibrator feature can see, so that conclusion does not
+bear on O1. The argument against relaxing O2's bound still holds.
+
 ### 11A.7 Model ablation: clean latency and corrected labels
 
 - Accuracy is not rerun. Add a corrected-label (`synthetic_500_v2.jsonl`) top-1 column computed
@@ -1126,6 +1140,264 @@ PR title `Phase 8B: corrective pass`, body as CLAUDE.md specifies, `Closes #<iss
 8B status row and fill in issue and PR numbers before merging. **This phase's deviations start
 at D58**: D55 and D56 were Phase 8's, D57 is this replan. Section 11 and this section's scope
 text stay as written.
+
+## 11B. Phase 8C: spatial anchor fix
+
+Added 2026-10-14 after a review of Phase 8B (#27). Numbered 11B after the 11A precedent.
+
+**You are a new session and you did not run Phase 8 or 8B.** Read these, in this order, and
+nothing else in this file unless a step below sends you there: this section; section 1 (Current
+metric status); section 8.1 and section 12.6 (the two field contract this phase amends); D57 to
+D63 in section 14; `docs/reports/phase-8b-corrective.md`. Then read the code you will change:
+`_resolve_llm` in `semantic_waypoint_planner/resolver_core.py`, `relations.py`,
+`scripts/llm_resolver.py` (`_encode_reasoning`) and `scripts/run_trials.py`.
+
+Goal: fix the post decode step that applies the relational hop a second time, measure the fix on
+held-out data without new inference, confirm it once end to end, and correct the 8B claims the
+review found wrong. Timeboxed at **0.5 day of human time plus about 1 h of unattended runs**
+(one e2e150 suite). The prompt, grammar, cue list, calibrator, threshold, model and annotation
+graph do not change.
+
+### 11B.0 What the review of 8B found
+
+1. **The e2e150 spatial failures are a double hop, not a calibrator problem.** For "the room to
+   the left/right of X", Phi-3 mini fills the v2 grammar's `room` field with the **answer**, not
+   the anchor X, against the template's instruction ("set room to the location it is relative to
+   (not the answer)"). `_resolve_llm` then applies `resolve_relation` to that answer, so the final
+   room lands two hops along the chain. A local probe (production resolver, in process, Metal,
+   temperature 0.3, three runs per command, not committed) reproduced the stored e2e150 outputs:
+
+   | command | model's `room` (3 of 3) | correct answer | final after the second hop |
+   |---|---|---|---|
+   | right of the kitchen | meeting_room_a | meeting_room_a | meeting_room_b |
+   | right of meeting room a | meeting_room_b | meeting_room_b | office |
+   | right of meeting room b | office | office | none |
+   | right of the charging dock | storage_room | storage_room | lab |
+   | left of the lab | storage_room | storage_room | charging_dock |
+   | near meeting room a | storage_room | storage_room | meeting_room_a |
+
+   The model was right on 18 of 18 calls before the second hop. The pattern does not depend on
+   the left/right convention: every final answer is exactly two hops from X. The other `near`
+   misses ("near the kitchen" and "near meeting room b" both give `storage_room`; "near the
+   workshop" varies) are ordinary model errors. A likely trigger is the adjacency block's
+   wording ("storage_room is ... left of lab"), which matches "left of the lab" word for word.
+   The 500 benchmark could not show this: most of its `spatial` rows are "beside / next to"
+   phrasings labelled `none`, and its model outputs mostly do follow the anchor contract.
+   Consequences: 11A.6's conclusion that the wrong spatial passes are "not separable on any
+   feature" and are evidence for 16A O1 rests on the wrong cause. They carry 0.90 to 0.95
+   confidence because the model's own answer is correct, so no calibrator feature can separate
+   them. Section 1's note "consistent with the gate passing 25 of 30 spatial commands ...
+   regardless of threshold" also points at the gate when the defect is in the resolver.
+2. **The e2e150 rows do not record the anchor.** `anchor_room`, `relation` and
+   `n_relation_targets` already reach `/semantic_goal_result` inside the `reasoning` JSON string
+   (`_encode_reasoning`, and `semantic_goal_node.cpp` forwards `reasoning`), but
+   `run_trials.py` never stores `reasoning`. This is a harness gap only, with no interface change.
+3. **`offline_gate_comparison.py` counts a `none` answer as an action.** Line 112 defines acted
+   as `calibrated_confidence >= threshold`, so at threshold 0.0 every abstention is "acted" and a
+   `none` on a resolvable row is scored as a wrong-room action. Gate-on figures are unaffected.
+   With acted defined as e2e150 defines it (a real room that passes the gate):
+
+   | set | 8B gate-off wrong-room | corrected gate-off wrong-room | gate on (unchanged) |
+   |---|---|---|---|
+   | corrected 500 | 0.268 (134/500) | 0.248 (124/500) | 0.056 (28/500) |
+   | session 2 | 0.290 (29/100) | 0.190 (19/100) | 0.020 (2/100) |
+
+   The 8B report also omits the gate's cost in correct actions: on the 500 it avoids 96 wrong
+   rooms and gives up 71 correct ones (297 to 226); on session 2 it avoids 17 and gives up 26
+   (71 to 45). "Roughly a factor of five" holds only for the 500.
+4. **`t_nav_start` is cited against the wrong file.** "90 of 91 null rows in the production
+   file" describes the two 8B rerun files; the production file has 79 nulls, 77 of them at the
+   previous row's pose. The reruns have more nulls than production, so the claim that
+   `_drain()` "improves capture" is not supported. D59's heading calls it a capture bug "fixed"
+   while its body says it is not a bug.
+5. **Deviation cross-references.** Section 1's two e2e150 rows cite "measured (D58)"; D58 is the
+   top-3 history and the result is D62. The 8B report's section 4 lists D58 to D61 and omits D62.
+6. **The clean production latency was never written up.** Through the full ROS path with the GPU
+   isolated (8B gate-off rerun, grammar on, production model, n = 150), resolver p50 is 3797 ms
+   and p90 is 5160 ms. It appears only inside `docs/results/e2e150_report.md`, although the 8B
+   DoD box for it is ticked. It matters to Phase 9: the p90 exceeds the 5 s BT tick timeout
+   default in the Review 2 table.
+7. **The isolated latency gap is attributed without evidence.** 8B's isolated Phi-3 mini
+   traffic weighted p90 is 4494 ms against 5A's 3737 ms, with decode at 164 ms per token
+   against about 138 ms earlier, put down to "session variance (thermal state, background load)".
+   Nothing measured supports that. It stays an open item, not a closed one.
+8. **The Phi-3.5 finding is real but narrow.** 0.764 against 0.726 corrected top-1 is
+   significant on a paired exact McNemar test (45 rows only Phi-3.5 gets right, 26 only Phi-3
+   mini, p = 0.032), but 12 of the net 19 come from `multi_hop` (18 against 6), single run, and
+   run to run variation of the same model is about 0.6 points (0.726 against 5A's 0.732). Its
+   top-3 column is still on original labels while top-1 is corrected. Whether Phi-3.5 follows
+   the anchor contract better is untested.
+
+What 8B got right stands: the relabel, the metric split, the reruns, the frozen data, 5 of 5
+tests, and 0.173 against 0.187 on e2e150 (re-gating the 8B gate-off rerun at 0.85 rejects
+exactly 2 rows, both wrong `negation`, giving 26/150, the same as production).
+
+### 11B.1 Telemetry first, before any fix
+
+- `run_trials.py` stores `reasoning` verbatim and parses its JSON into `model_room`,
+  `anchor_room`, `anchor_source`, `relation`, `n_relation_targets` and `grammar_version` columns
+  (empty when absent). No message, service or C++ change.
+- `_encode_reasoning` adds `model_room` (the raw `room` field the model emitted) and
+  `anchor_source` (`text` or `model`, from 11B.2), so a row shows what the model said and which
+  anchor the hop used.
+- A unit test round-trips one hop result through `_encode_reasoning` and the harness parser.
+
+### 11B.2 The fix: anchor from the command text, one hop in code
+
+Freeze the rule as code and tests, commit it, then run anything. The rule:
+
+1. Applies only when the command is cued (8A.1), the grammar is on, the model's `relation` is
+   one of `left_of`, `right_of`, `adjacent`, `near`, and the model's `room` is a canonical name
+   (not `none`). Everything else keeps current behaviour: `within` legitimately anchors on a sub
+   location, `relation == "none"` means the model's `room` is the answer, and a `none` room is
+   the model abstaining, which this rule never overrides.
+2. **Text anchor.** Normalize the command (lowercase, punctuation to spaces, collapsed
+   whitespace), find the end of the first cue phrase from `relational_cues.json`, and search the
+   remainder for canonical names (underscores as spaces) and aliases, longest match first, on
+   word boundaries (so "dock" does not match inside "docking bay"). Keep only rooms that appear
+   in at least one `edges` entry; sub locations have no edges and cannot anchor a left, right,
+   adjacent or near hop.
+3. If exactly one distinct room is found, it is the anchor (`anchor_source = "text"`) and the
+   hop is `resolve_relation(graph, text_anchor, relation, command)`, applied once. The model's
+   `room` is ignored for the hop but kept as `model_room`.
+4. If zero or more than one distinct room is found, fall back to the model's `room` as anchor
+   (`anchor_source = "model"`), which is today's behaviour.
+5. The relation is always the model's. Changing it is a separate decision.
+6. A resolver parameter `text_anchor` (default `true`, overridable in `planner_params.yaml` and
+   the node) switches the rule off, so the old path stays reproducible.
+
+Put the extraction in `relations.py` as a pure function and call the same function from the
+resolver and from 11B.3's replay. Never reimplement it in the replay.
+
+Tests before measuring:
+- Extraction truth table: each of the 10 e2e150 spatial phrasings gives its anchor room (for
+  example "Go to the room to the right of the meeting room a." gives `meeting_room_a`); "beside
+  the docking bay" gives `storage_room`, not `charging_dock`; a command naming two edge-bearing
+  rooms after the cue gives none; a sub location after the cue gives none; "the room with the
+  coffee machine" is not routed through this rule.
+- Resolver level, with the stub backend in `test_resolver_core_offline.py`: model output
+  `{"room": "meeting_room_a", "relation": "right_of"}` for "Go to the room to the right of the
+  kitchen." resolves to `meeting_room_a` with `anchor_source == "text"`; with
+  `text_anchor=False` it resolves to `meeting_room_b` (the current behaviour, kept as a
+  regression record).
+
+### 11B.3 Measure on held-out data by exact replay, no inference
+
+The prompt and grammar are unchanged and the fix acts after decoding, so the model's output on
+every cached row is what it would emit again (up to temperature 0.3 sampling). Replaying the
+stored `room` (the cached `anchor_room` when `relation != "none"`, else `resolved_room`) and
+`relation` through the new post-decode step gives the exact paired effect of the fix with no
+sampling noise. Write `ml/safenav_ml/replay_text_anchor.py` to do this for:
+
+- `data/frozen/phase5a_full500.jsonl` against `synthetic_500_v2.jsonl`: top-1 corrected and
+  original, per category, before and after, plus the list of every row whose final room changes,
+  with its category and whether it moved to or from correct.
+- `calibration_session1_trials.jsonl` and `calibration_session2_trials.jsonl`: final room
+  before and after, and `edit_distance` recomputed against the new final room (section 12.8
+  computes it on the final room). Recompute calibrated confidence through the deployed
+  calibrator, the same way 8B's `offline_gate_comparison.py` reconstructs it.
+- Report session 2 false pass and false rejection at 0.85, and the gated 500 accuracy (the
+  `gated_benchmark_500` path in `train_calibrator.py`), before and after.
+
+**e2e150 is the development set.** The rule was designed from the e2e150 evidence in 11B.0, so
+its e2e150 improvement shows the fix works as intended but does not count toward 11B.5's
+decision. The 500 and the two calibration sessions are the held-out evidence.
+
+### 11B.4 One live confirmation: e2e150 production at 150
+
+Fresh host `llama-server` (production model, Metal), nothing else on the GPU, fresh
+`semantic_nav.launch.py`, and the 8B launch health check: "Managed nodes are active" twice in
+the launch log and no persisting "out of bounds" or "no map received" warning before the suite
+starts. Then production configuration (grammar on, gate 0.85, `text_anchor` on) at the full
+150, with `--no-bag` per D56 practice.
+
+- Score against the corrected labels with the 8B `e2e_report.py` metrics.
+- Re-gate the same rows at 0.0 offline for Condition B versus C (the gate never changes the
+  resolved room, and every row stores `calibrated_confidence`). No separate gate-off run.
+- From the new columns, report for every left/right row whether `model_room` equals the
+  corrected answer. This confirms 11B.0 finding 1 from committed data, replacing the uncommitted
+  probe.
+- Report resolver p50/p90/p99 from this run beside 8B's 3797/5160 ms; the fix adds no tokens,
+  so a large shift means contention and the run is suspect.
+
+Expected from the probe: about 18 spatial rows move to correct (2/30 to about 20/30) and
+wrong-room actions fall from 26 to about 11. If the live run differs materially, report the
+difference; do not adjust the rule.
+
+### 11B.5 Decision rule, frozen now
+
+`text_anchor` ships default **on** only if both hold on the held-out replay:
+
+- session 2 false pass at 0.85 stays at or below 0.05 with the recomputed features; and
+- the corrected 500 top-1 does not fall (paired: rows gained minus rows lost is at least zero).
+
+Otherwise the default is **off**, both sets of numbers are reported, and the reason goes to the
+next phase. Either way, do not retrain the calibrator, move the threshold, or edit the prompt in
+this phase; recalibration on the fixed resolver belongs with 16A O1, which retrains anyway.
+
+### 11B.6 8B corrections
+
+- `offline_gate_comparison.py`: acted means a real room (not `none`) passing the threshold.
+  Regenerate `docs/results/offline_gate_comparison.md` for the old resolver output, add the
+  gate's cost in correct actions as a column, and add an after-fix table from 11B.3.
+- `docs/reports/phase-8b-corrective.md`: dated amendment banner naming 11B.0 findings 1, 3, 4,
+  5, 7 and 8 and pointing to the 8C report. Body untouched.
+- `docs/results/RESULTS.md`: correct the offline gate table and the factor-of-five sentence in
+  place (superseded figures kept visible), add the 3797/5160 ms ROS path latency row as its own
+  measurement beside 5A's 3737 ms (not replacing it), mark 11A.6's interpretation as superseded
+  by the double-hop finding, add the McNemar result and the `multi_hop` concentration to the
+  Phi-3.5 note, and add the 8C before-and-after tables.
+- Section 1 of this plan: fix the two e2e150 rows' citation (D62, not D58), update them with the
+  8C numbers in a new row rather than overwriting 8B's, and add a "Corrected by D63" note to
+  the amended paragraph's last sentence.
+- D59: append a "Corrected by D63" note on the file citation and the "fixed" heading.
+- Section 12.6 semantics paragraph: append a dated note recording the text anchor rule and its
+  deviation number. The grammar itself does not change.
+- `README.md` results summary: the double-hop finding and the 8C result as measured.
+
+### 11B.7 What not to do
+
+- No change to the prompt, few-shot file, grammar, cue list, calibrator, threshold, model or
+  annotation graph. No new relation inference from text.
+- Do not tune the extraction rule on the 500 or the calibration sessions. If a held-out row
+  exposes an extraction bug, record it as a deviation with the row, fix only that defect, and
+  report results both before and after the fix.
+- No change to e2e150 commands or labels.
+- No live rerun of the 500 or the calibration sessions; the replay is the measurement.
+- Nothing else on the GPU during 11B.4.
+- Phase 9 and 16A items stay out (11B.0 finding 7 is recorded, not investigated).
+
+### DoD
+
+- [ ] Telemetry (11B.1) committed with its test before the fix.
+- [ ] Extraction rule and both test tables committed before any replay or run; unit tests pass.
+- [ ] Replay on the 500 and both calibration sessions: before and after tables, every changed row
+      listed, session 2 false pass and false rejection, gated 500 accuracy.
+- [ ] 11B.5 decision applied and stated, with the numbers it rests on.
+- [ ] e2e150 production at 150 with `text_anchor` on: 8B metrics, offline Condition B versus C,
+      `model_room` check on every left/right row, resolver latency beside 8B's.
+- [ ] 8B corrections in 11B.6 made; nothing deleted.
+- [ ] New run and replay files in `data/frozen/` with `MANIFEST.md` entries.
+- [ ] `colcon test` 5 of 5 with no stack up on an isolated `ROS_DOMAIN_ID` (a D61 flake is
+      retried once and recorded if it recurs).
+- [ ] Report `docs/reports/phase-8c-spatial-anchor-fix.md` written, PR merged.
+
+Gate: the double-hop finding is confirmed from committed data, the fix's effect is reported on
+held-out data with every changed row listed, and the default follows the frozen rule whatever
+the numbers are.
+
+### 11B.8 Git flow and numbering
+
+```
+git checkout main && git pull
+gh issue create --title "Phase 8C: spatial anchor fix" --body-file <file> --label phase
+git checkout -b phase-8c/spatial-anchor-fix
+```
+
+PR title `Phase 8C: spatial anchor fix`, body as CLAUDE.md specifies, `Closes #<issue>`. Tick the
+8C status row and fill in issue and PR numbers before merging. **This phase's deviations start
+at D64**: D58 to D62 were 8B's, D63 is this replan. The text anchor rule is this phase's first
+deviation (it amends the section 8.1 and 12.6 contract).
 
 ## 12. Interface and data contracts (frozen after Phase 1)
 
@@ -1692,6 +1964,21 @@ appended now, unchanged in substance. D57 is the Phase 8B corrective replan.
   (production, rescored) versus 0.187 with it off (8B rerun, 150 rows, fresh stack, isolated
   GPU); 148 of 150 rows resolve to the same room whether the grammar is on or off. Reported as
   measured, per 11A.4's instruction, with no threshold attached either way.
+- **D63: a review of Phase 8B (#27) found the e2e150 spatial failures are a resolver double hop,
+  and Phase 8C (section 11B) is added to fix it and correct 8B's claims.** For left/right
+  commands Phi-3 mini emits the answer in the v2 `room` field instead of the anchor, and
+  `_resolve_llm` hops again from it; a local probe reproduced the stored e2e150 outputs, with the
+  model right on 18 of 18 calls before the second hop. This withdraws 11A.6's reading that the
+  wrong passes are a calibrator separability problem and evidence for 16A O1. The review also
+  found `offline_gate_comparison.py` counting `none` answers as actions (gate-off wrong-room
+  0.268 and 0.290 should be 0.248 and 0.190), D59's `t_nav_start` claim citing the wrong file,
+  section 1 citing D58 for the e2e150 result instead of D62, the 3797/5160 ms ROS path latency
+  left out of RESULTS.md, the 4494 against 3737 ms isolated latency gap attributed without
+  evidence, and the Phi-3.5 lead (p = 0.032, paired) concentrated in `multi_hop`. 8C fixes the
+  resolver post-decode step only (anchor read from the command text, one hop in code, behind a
+  `text_anchor` parameter), measures it by exact replay on the held-out sets with no new
+  inference, confirms it with one e2e150 run, and amends the 8B documents. Nothing 8B wrote is
+  deleted.
 
 ## 15. Phase 9: hardware readiness (no robot required)
 
