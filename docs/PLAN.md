@@ -28,6 +28,7 @@ Status legend: `[ ]` not started, `[~]` in progress, `[x]` merged to main.
 | 8 | E2E validation, ablations, final results | [x] | #24 | #25 |
 | 8B | Corrective: e2e150 rescoring, clean reruns, claim corrections (section 11A) | [x] | #26 | #27 |
 | 8C | Spatial anchor fix and 8B corrections (section 11B) | [x] | #28 | #29 |
+| 8D | Ship the text anchor fix and 8C corrections (section 11C) | [ ] | | |
 | 9 | Hardware readiness (no robot required) | [ ] | | |
 | 10 | Hardware bring-up (deferred until hardware is present) | [ ] | | |
 
@@ -45,7 +46,8 @@ with other work.
 | 7 Calibration | 0.75 d | ~20 min | |
 | 8 E2E validation and results | 0.75 d | ~3.5 h (300 loopback runs) | merged #25, claims under correction (D57) |
 | 8B Corrective pass (section 11A) | 0.75 d | ~3.5 h (450 loopback runs, isolated latency) | merged #27, wall clock 3 h 51 min |
-| 8C Spatial anchor fix (section 11B) | 0.5 d | ~1 h (150 loopback runs; held-out sets replayed offline) | merged #29 |
+| 8C Spatial anchor fix (section 11B) | 0.5 d | ~1 h (150 loopback runs; held-out sets replayed offline) | merged #29, wall clock 1 h 18 min |
+| 8D Ship the text anchor fix (section 11C) | 0.25 d | none (no inference, no simulator) | next |
 | 9 Hardware readiness | 0.5 d | none | |
 
 Phase 5 merged having met every engineering DoD item and missed both its accuracy gate (top-1
@@ -59,7 +61,7 @@ session without blocking anything, which puts the critical path at 3.75 days.
 Section 16A holds optional scope that is budgeted at zero. It is attempted only if Phase 8 and
 Phase 9 are merged and time is left over, and it never displaces either. Phase 8B (section 11A,
 D57) counts as part of Phase 8 for this rule: 16A waits for 8B as well. Phase 8C (section 11B,
-D63) counts the same way.
+D63) and Phase 8D (section 11C, D65) count the same way.
 
 ## 0. Ground rules that apply to every phase
 
@@ -215,6 +217,14 @@ The fix ships with its default **off** in `planner_params.yaml`, because the hel
 falling by one row net (6 gained, 7 lost, all 7 losses in `multi_hop` compound sentences where
 the "first cue, nearest room" rule picks up the wrong clause's room). Session 2 false pass is
 unaffected either way (0.043 before and after).
+
+**Corrected by D65 (2026-10-14, after 8C merged).** The rows above say the gate catches nothing
+with the fix on (0.000 against 0.000). That is a computation error. Re-gated at 0.0 with acted
+meaning a real room, 3 `negation` rows act wrongly at 0.798, giving 0.000 against 0.020: the
+gate catches all 3. The "default ships off" decision is also reversed. Under the 0.85 gate the
+fix changes behaviour on exactly one of 800 held-out rows, where it removes a wrong action. The
+project owner decided after seeing the results to ship it on. Section 11C (Phase 8D) applies
+the decision and corrects the rows.
 
 **One metric is currently a miss: latency.** Everything else is met, favourable against its
 literature anchor, reported without a gate, or not yet measured. The gated accuracy row is the
@@ -1412,6 +1422,175 @@ PR title `Phase 8C: spatial anchor fix`, body as CLAUDE.md specifies, `Closes #<
 at D64**: D58 to D62 were 8B's, D63 is this replan. The text anchor rule is this phase's first
 deviation (it amends the section 8.1 and 12.6 contract).
 
+**Superseded in part by D65 (2026-10-14, after 8C merged).** 8C applied 11B.5 as written and
+shipped `text_anchor` off. The rule's second condition measured raw top-1, but the system always
+runs behind the 0.85 gate, and under the gate the fix changes no correct action and adds no
+wrong one on any held-out set. The project owner decided after seeing the results to ship it on.
+Section 11C (Phase 8D) carries that out. 11B.5 is kept as written, along with the "off" outcome
+it produced.
+
+## 11C. Phase 8D: ship the text anchor fix
+
+Added 2026-10-14 after a review of Phase 8C (#29). Numbered 11C after the 11A and 11B precedent.
+
+**You are a new session and you did not run 8B or 8C.** Read these, in this order, and nothing
+else in this file unless a step below sends you there: this section; section 1 (Current metric
+status); section 11B.2 and 11B.5; D63 to D65 in section 14;
+`docs/reports/phase-8c-spatial-anchor-fix.md`; `docs/results/text_anchor_replay.md`;
+`docs/results/e2e150_report_8c.md`.
+
+Goal: make `text_anchor` the shipped default everywhere, with the decision disclosed as made
+after the results. Verify the gated evidence it rests on from committed code, correct the three
+8C errors the review found, and amend the documents. Timeboxed at **0.25 day of human time, no
+unattended runs**: no inference and no simulator. The extraction rule, prompt, grammar, cue
+list, calibrator, threshold, model and annotation graph do not change.
+
+### 11C.0 What the review of 8C found
+
+1. **11B.5 measured the wrong quantity for a shipping decision.** Its second condition was
+   corrected 500 top-1 without the gate. Production always runs behind the 0.85 gate. The review
+   recomputed calibrated confidence for every row the replay changed, using the deployed
+   calibrator and the features recomputed on the new final room:
+
+   | held-out set | rows changed | changed rows acting at 0.85, before | after | net effect on actions |
+   |---|---|---|---|---|
+   | corrected 500 | 15 | 1 (p0143, `meeting_room_a` at 0.949, expected `none`) | 0 | one wrong action removed |
+   | session 1 | 15 | 0 | 0 | none |
+   | session 2 | 10 | 0 | 0 | none |
+
+   Across all 800 held-out rows, the fix changes the gated system's behaviour on exactly one row,
+   where it removes a wrong action. It adds no wrong action and removes no correct one. All 7
+   `multi_hop` rows lost on raw top-1 stay below the threshold after the change (0.256 to 0.753),
+   so they become clarifications, not actions. Those 7 rows had previously been "correct" by
+   accident: the model anchored on an edgeless sub location (`tool_cabinet`, `lab_bench_1`,
+   `storage_shelf_1`, `office_desk_1`, `battery_shelf`, `server_rack_a`), so the hop found no
+   target and abstained. On e2e150, the development set, gated wrong-room actions go from 26 of
+   140 to 0 of 140. The gate also holds the 5 raw gains on the 500 (for example `p0142` correct
+   at 0.754 and `p0182` correct at 0.822). The calibrator was trained on pre-fix features and
+   under-rates the fixed answers; that is a recalibration question for 16A O1, not for this
+   phase.
+2. **"Off" holds only where `planner_params.yaml` is loaded.** `ResolverCore(text_anchor=True)`
+   and the node's `declare_parameter("text_anchor", True)` both default on, and only
+   `semantic_nav.launch.py` loads the YAML. `resolver_only.launch.py`, its launch test, and every
+   `ml/` script that builds a `ResolverCore` already run with the fix on.
+3. **The 8C offline Condition B versus C figure is wrong.** It reports 0.000 against 0.000 with
+   140 acted at both thresholds, and says the gate "has nothing left to catch". Re-gated at 0.0
+   with acted defined as a real room passing the threshold (D63 finding 3, the definition 8C
+   itself fixed in `offline_gate_comparison.py`), 143 rows act and 3 are wrong: the `negation`
+   command "I don't want meeting room b, take me to conference room a ...", resolved to
+   `meeting_room_b` at 0.798 in all three trials. The correct figure is **0.000 with the gate
+   against 0.020 (3/150) without it**: the gate catches all 3 wrong rooms in the run. The error
+   appears in section 1, `docs/results/e2e150_report_8c.md`, RESULTS.md and the 8C report. The
+   computation was not committed as code.
+4. **The replay files cannot show which room the text anchor rule found.** In
+   `text_anchor_replay_500.jsonl`, `anchor_room` holds the model's anchor (for example `p0142`
+   shows `office` where the command names the front desk), while in e2e150 rows `anchor_room`
+   means the anchor the hop actually used. The text anchor behind each of the 7 losses was
+   recomputed by the review, not read from committed data.
+5. **The D61 flake recurs.** `test_test_resolver_only_launch.py` returned an empty
+   `matched_room_name` for "somewhere I can charge the robot" once in 8B and twice in a row in
+   8C. That command has no relational cue, so the flake is unrelated to the fix. It needs its
+   own issue rather than a third "consistent with variance" note.
+
+### 11C.1 Verify the gated evidence from committed code, before changing any default
+
+Extend `ml/safenav_ml/replay_text_anchor.py` (do not write a second replay):
+
+- Recompute calibrated confidence before and after for every changed row of the 500, as session
+  1 and 2 already do, through the same feature path as `offline_gate_comparison.py`.
+- For each held-out set, add a gated table at 0.85: changed rows acting before, acting after,
+  wrong actions added and removed, correct actions added and removed.
+- Write new output columns `model_room` (the model's `room` field) and `anchor_used` (the room
+  the hop used, with `anchor_source`), so every changed row shows which text anchor the rule
+  found.
+- Write the outputs as new files, `text_anchor_replay_*_v2.jsonl`, in `data/frozen/`. Keep the
+  8C files and mark them superseded in `MANIFEST.md`.
+
+**Stop rule.** If the committed script does not reproduce 11C.0 finding 1 (no wrong action
+added and no correct action removed at 0.85 on any held-out set, and session 2 false pass at
+or below 0.05), do not change any default. Report the discrepancy and stop. If it does
+reproduce, continue.
+
+### 11C.2 One shipped default, everywhere
+
+- `text_anchor: true` in `planner_params.yaml`. The `ResolverCore` and `declare_parameter`
+  defaults stay `True`, so code, node and YAML agree.
+- A unit test asserts that the three agree: the YAML value, the `ResolverCore` signature default
+  and the node's declared default (read from the source, without importing rclpy).
+- Record the setting in every new run record: add a `text_anchor` field to
+  `scripts/run_trials.py` rows, `ml/safenav_ml/run_trials.py` rows and
+  `ml/safenav_ml/run_phase5_benchmark.py` rows. Every committed run before 8C used the old
+  behaviour (the fix did not exist). Say so in `MANIFEST.md`, not by editing old files.
+
+### 11C.3 Correct the Condition B versus C figure
+
+- Add `--regate <threshold>` to `ml/safenav_ml/e2e_report.py`. It recomputes acted as
+  `attempted_room` not `none` and `calibrated_confidence >= threshold`, rather than reading
+  `gate_passed`.
+- Regenerate the 8C Condition B versus C table from `e2e150_production_8c.jsonl` with it, and
+  check 0.000 against 0.020 (143 acted at 0.0, 3 wrong). If it differs, report what it gives.
+- Correct `docs/results/e2e150_report_8c.md`, RESULTS.md and the section 1 row in place, keeping
+  the superseded figure visible with a "Corrected by D65" note.
+
+### 11C.4 Documents
+
+- Section 1 of this plan:
+  - Relabel the two 8C e2e150 rows from "diagnostic only, default ships off" to the shipped
+    configuration (D65).
+  - Add rows for the shipped resolver on the corrected 500, from the replay: raw top-1 0.730 and
+    gated 0.722, beside 5A's 0.732 and Phase 7's 0.72. Do not overwrite the old rows.
+  - Add a "Corrected by D65" note to the D64 paragraph.
+- D64 and 11B.5: each gets a "Superseded by D65" note. Neither is rewritten.
+- Section 12.6's 8C note: append that the default is on as of D65.
+- `docs/reports/phase-8c-spatial-anchor-fix.md`: a dated amendment banner naming 11C.0 findings
+  1 to 4 and pointing to the 8D report. Body untouched.
+- RESULTS.md and the README results summary: state the shipped configuration, the gated
+  evidence table from 11C.1, and that the decision was made after the results were seen.
+- Open a GitHub issue for the D61 flake (not a phase issue, no `phase` label) listing its three
+  occurrences with session and command. Do not fix it here.
+
+### 11C.5 What not to do
+
+- No change to the extraction rule, prompt, few-shot file, grammar, cue list, calibrator,
+  threshold, model or annotation graph. The `multi_hop` raw losses are recorded, not tuned.
+- No live runs. The 8C e2e150 run already used the configuration now shipped (production
+  configuration with `text_anchor` on), so it is the shipped e2e150 measurement. A rerun would
+  only re-sample.
+- Do not present the decision as following the frozen rule. It overrides the rule, and the
+  report says so in its first paragraph.
+- Do not delete or rewrite any 8C file, table or sentence. Supersede visibly.
+
+### DoD
+
+- [ ] 11C.1 gated tables from the committed replay script reproduce 11C.0 finding 1, or the
+      discrepancy is reported and no default is changed.
+- [ ] `text_anchor` true in code, node and YAML, with the agreement test; `text_anchor` field in
+      new run records of the three runners.
+- [ ] `e2e_report.py --regate` committed; the 8C Condition B versus C figure corrected in every
+      place it appears.
+- [ ] v2 replay files in `data/frozen/` with `MANIFEST.md` entries; 8C files marked superseded.
+- [ ] Section 11C.4 amendments made; nothing deleted.
+- [ ] D61 flake issue opened.
+- [ ] `colcon test` with no stack up on an isolated `ROS_DOMAIN_ID`: all pass (a D61 flake is
+      retried once and its occurrence added to the issue).
+- [ ] Report `docs/reports/phase-8d-ship-text-anchor.md` written, PR merged.
+
+Gate: the shipped default is the same in every entry point, the decision and its timing are
+disclosed in section 1, D65 and the report, and every gated claim is reproduced by committed
+code.
+
+### 11C.6 Git flow and numbering
+
+```
+git checkout main && git pull
+gh issue create --title "Phase 8D: ship the text anchor fix" --body-file <file> --label phase
+git checkout -b phase-8d/ship-text-anchor
+```
+
+PR title `Phase 8D: ship the text anchor fix`, body as CLAUDE.md specifies, `Closes #<issue>`.
+Tick the 8D status row and fill in issue and PR numbers before merging. **This phase's deviations
+start at D66**: D64 was 8C's, and D65 is this replan and the shipping decision.
+
 ## 12. Interface and data contracts (frozen after Phase 1)
 
 ### 12.1 SemanticGoal.msg
@@ -2026,6 +2205,28 @@ appended now, unchanged in substance. D57 is the Phase 8B corrective replan.
   than tuning this one further. Also fixes `offline_gate_comparison.py` counting a `none`
   answer as an acted-on row (D63 finding 3): gate-off wrong-room action rate corrects from 0.268
   to 0.248 (500) and 0.290 to 0.190 (session 2); gate-on figures are unaffected.
+- **D65: `text_anchor` ships on, reversing the outcome of 11B.5's frozen rule. The decision was
+  made after the results were seen, and it is disclosed as such.** A review of Phase 8C (#29)
+  found that 11B.5's second condition measured corrected 500 top-1 without the gate, which is
+  the wrong quantity for a shipping decision, because production always runs behind the 0.85
+  gate. Under the gate, across all 800 held-out rows (500, session 1, session 2), the fix
+  changes the system's actions on exactly one row (`p0143`, a wrong `meeting_room_a` at 0.949
+  becomes an abstention). It adds no wrong action and removes no correct one. The 7 `multi_hop`
+  raw losses stay below the threshold (0.256 to 0.753), and before the fix they abstained only
+  because the model anchored on edgeless sub locations. Against this, keeping the fix off leaves
+  the double hop in production, which on e2e150 passes 25 wrong spatial rooms at 0.90 to 0.95.
+  The project owner chose to ship on. 11B.5's rule, 8C's "off" outcome and D64 are kept as
+  written with "Superseded by D65" notes. The review also found:
+  - `text_anchor` already defaulted on in `ResolverCore` and the node, and off only in
+    `planner_params.yaml`, so "off" applied only to `semantic_nav.launch.py`;
+  - 8C's offline Condition B versus C figure (0.000 against 0.000) is wrong, and the correct
+    figure is 0.000 against 0.020 (3/150 `negation` rows at 0.798 without the gate);
+  - the replay files' `anchor_room` column holds the model's anchor, not the anchor used;
+  - the D61 launch-test flake has now occurred three times.
+
+  Phase 8D (section 11C) verifies the gated evidence from committed code (with a stop rule if it
+  does not reproduce), aligns the defaults, corrects the figure and amends the documents. It
+  runs no inference.
 
 ## 15. Phase 9: hardware readiness (no robot required)
 
