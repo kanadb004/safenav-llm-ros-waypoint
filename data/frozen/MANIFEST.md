@@ -40,6 +40,12 @@ each row's own stored feature values; see docs/results/offline_gate_comparison.m
 | text_anchor_replay_session2_v2.jsonl | ce5699dd3f0a80f0eeda5dda685ec1283492cb9cf4314720b0879108b32e2ea4 | 100 | Phase 8D (PLAN.md 11C.1) | same invocation as above; replays calibration_session2_trials.jsonl, same new columns |
 | e2e150_production_8c.jsonl | cf985edca0f3292bc82a58b9a153cbb9c2d69a96c1ed5d7632ddf15ab32b78a6 | 150 | Phase 8C (PLAN.md 11B.4), **D65 (Phase 8D): `text_anchor` is now the shipped default, so this is the shipped e2e150 measurement, not a diagnostic-only run; no rerun** | `ros2 run semantic_waypoint_planner run_trials.py --suite e2e150 --out /ws/data/runs/e2e150_production_8c.jsonl --grammar-on --gate-threshold 0.85 --no-bag`, fresh stack, fresh host llama-server (phi3-mini, port 8080), nothing else on the GPU, `text_anchor` forced on in `planner_params.yaml` for this run only (reverted to false at the time, now the shipped default per D65) |
 
+Every `phase8_*`, `e2e150_*_8b`, `e2e150_loopback_rescored`, `phase5a_full500` and
+`calibration_session*` file above predates the `text_anchor` parameter, so its behaviour is
+equivalent to `text_anchor` off; `e2e150_production_8c.jsonl` ran with it forced on; the replay
+files carry both by construction (see their own `before_calibrated`/`after_calibrated` columns).
+Corrected in Phase 9.
+
 ## Bags (uncommitted, too large; path/size/hash recorded here)
 
 | path | size | metadata.yaml sha256 |

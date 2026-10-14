@@ -49,6 +49,8 @@ resolver node's live parameter value (`ros2 param get /llm_resolver_node_py text
 adds it to each row; `ml/safenav_ml/run_trials.py` and `run_phase5_benchmark.py` add
 `core.text_anchor` to theirs. Every run committed before this phase used the pre-fix or
 diagnostic-forced behaviour; `MANIFEST.md` notes this per file rather than editing old rows.
+**Corrected in Phase 9:** only the `e2e150_production_8c.jsonl` row carried such a note; the
+other files got a shared sentence below the table instead.
 
 ## 3. The Condition B versus C figure (11C.3)
 
