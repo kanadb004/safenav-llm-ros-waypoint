@@ -28,7 +28,7 @@ Status legend: `[ ]` not started, `[~]` in progress, `[x]` merged to main.
 | 8 | E2E validation, ablations, final results | [x] | #24 | #25 |
 | 8B | Corrective: e2e150 rescoring, clean reruns, claim corrections (section 11A) | [x] | #26 | #27 |
 | 8C | Spatial anchor fix and 8B corrections (section 11B) | [x] | #28 | #29 |
-| 8D | Ship the text anchor fix and 8C corrections (section 11C) | [ ] | #30 | |
+| 8D | Ship the text anchor fix and 8C corrections (section 11C) | [x] | #30 | |
 | 9 | Hardware readiness (no robot required) | [ ] | | |
 | 10 | Hardware bring-up (deferred until hardware is present) | [ ] | | |
 
