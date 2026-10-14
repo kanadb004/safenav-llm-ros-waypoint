@@ -32,6 +32,10 @@ collected with `calibrator_loaded=False` (their `calibrated_confidence` column i
 `ml/safenav_ml/offline_gate_comparison.py` reconstructs the deployed calibrator's output from
 each row's own stored feature values; see docs/results/offline_gate_comparison.md.
 
+| text_anchor_replay_500.jsonl | e4113f59acaee7f71ddfa1df5b5a6cb5a619523f1ea2a44f13494188f98bb034 | 500 | Phase 8C (PLAN.md 11B.3) | `python3 ml/safenav_ml/replay_text_anchor.py --out docs/results/text_anchor_replay.md`; replays phase5a_full500.jsonl x synthetic_500_v2.jsonl through the text anchor fix, no inference re-run |
+| text_anchor_replay_session1.jsonl | 885ac11450ecf1f3dd5616e66171bfcc683b5947416e4403fc668a5128bd8464 | 200 | Phase 8C (PLAN.md 11B.3) | same invocation as above; replays calibration_session1_trials.jsonl |
+| text_anchor_replay_session2.jsonl | a506e1212075a94afe852a77b98d19b4c82a6b57c73da4b396f491eb8d431d76 | 100 | Phase 8C (PLAN.md 11B.3) | same invocation as above; replays calibration_session2_trials.jsonl |
+
 ## Bags (uncommitted, too large; path/size/hash recorded here)
 
 | path | size | metadata.yaml sha256 |
