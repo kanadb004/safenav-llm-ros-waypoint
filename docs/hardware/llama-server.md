@@ -57,19 +57,27 @@ on macOS wires this up by default. A Linux host without Docker Desktop would nee
 required here and is left as a note for a future non-macOS development host rather than
 applied speculatively.
 
-## Jetson CUDA (flags only, build lands in Phase 9)
+## Jetson CUDA (flags only; the build itself is Phase 10, not Phase 9)
 
-On the Orin NX, `llama-server` is the same binary target, built with CUDA instead of Metal:
+On the Orin NX, `llama-server` is the same binary target, built with CUDA instead of Metal.
+This file originally said Phase 9 builds and measures this; **corrected in Phase 9** (PLAN.md
+section 15): Phase 9 only writes and reviews `docker/Dockerfile.jetson` without a Jetson
+present, Phase 10 actually builds and runs it on the device.
 
 ```bash
-cmake -B build -DGGML_CUDA=ON -DLLAMA_CURL=OFF -DCMAKE_BUILD_TYPE=Release
-cmake --build build --target llama-server --config Release -j$(nproc)
+cmake -B build -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=87 -DLLAMA_CURL=OFF \
+  -DCMAKE_BUILD_TYPE=Release
+cmake --build build --target llama-server --config Release -j2
 ```
 
-Run identically, minus `-ngl` tuned to the Orin NX's VRAM (Phase 9 measures and records the
-actual value; `-ngl 99` is a safe starting point for a model this small). On hardware the
-resolver runs on the Jetson itself, so `backend_url` becomes `http://127.0.0.1:8080`: same
-code path, same request shape, only the URL changes (S2 in `docs/archive/superseded-decisions.md`).
-This file documents the flags only; Phase 9 is what actually builds and measures this on the
-Jetson, since v2's hardware plan explicitly avoids compiling llama-cpp-python from source
-against JetPack's CUDA (see superseded-decisions.md S2 point 1).
+`-DCMAKE_CUDA_ARCHITECTURES=87` is pinned explicitly for the Orin NX's compute capability
+(sm_87) rather than left to auto-detection, and `-j2` caps peak build memory; see
+`docs/hardware/jetson-build.md` failure modes 2 and 3 for why. Run identically, minus `-ngl`
+tuned to the Orin NX's VRAM (Phase 10 measures and records the actual value; `-ngl 99` is a
+safe starting point for a model this small). On hardware the resolver runs on the Jetson
+itself, so `backend_url` becomes `http://127.0.0.1:8080`: same code path, same request shape,
+only the URL changes (S2 in `docs/archive/superseded-decisions.md`), matching the
+`llm_resolver_node_py_hardware` profile in `planner_params.yaml` (PLAN.md section 15). This
+file documents the flags only; v2's hardware plan explicitly avoids compiling llama-cpp-python
+from source against JetPack's CUDA (see superseded-decisions.md S2 point 1), which is why the
+HTTP backend, not `inprocess`, is the hardware profile's default.
