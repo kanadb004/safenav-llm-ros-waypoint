@@ -1,8 +1,12 @@
 # Phase 8C: e2e150 production confirmation, text_anchor on (PLAN.md 11B.4)
 
 One-time diagnostic run (`data/frozen/e2e150_production_8c.jsonl`): production configuration
-(grammar on, gate 0.85) with `text_anchor` forced on for this run only (the shipped default is
-off, per PLAN.md 11B.5; see `docs/results/text_anchor_replay.md`). Fresh host `llama-server`
+(grammar on, gate 0.85) with `text_anchor` forced on for this run only (the shipped default was
+off at the time, per PLAN.md 11B.5; see `docs/results/text_anchor_replay.md`).
+
+**Corrected by D65 (2026-10-14, Phase 8D).** `text_anchor` is now the shipped default
+everywhere (PLAN.md 11C). This run used exactly the now-shipped configuration, so it is the
+shipped e2e150 measurement, not a diagnostic-only run; no rerun was done. Fresh host `llama-server`
 (production model, Metal, nothing else on the GPU), fresh `semantic_nav.launch.py`, launch
 health check passed ("Managed nodes are active" twice, no out-of-bounds/no-map warnings before
 the suite started), `--no-bag` per D56/8B practice. Metrics via `ml/safenav_ml/e2e_report.py`
@@ -56,6 +60,23 @@ Identical: every row that acts at 0.0 also acts at 0.85 on this run, and none of
 With the double hop fixed, the gate has nothing left to catch on this command set in either
 direction, for a different reason than 8B's finding (there, wrong answers already cleared the
 threshold; here there are no wrong answers for the threshold to act on).
+
+**Corrected by D65 (2026-10-14, Phase 8D).** The table above is wrong: its gate-off row read
+`gate_passed` as recorded rather than recomputing acted from `attempted_room`/
+`calibrated_confidence`, so it silently repeated the gate-on acted count instead of re-gating at
+0.0. Recomputed with `ml/safenav_ml/e2e_report.py --regate <threshold>` (PLAN.md 11C.3), acted
+means a real room (`attempted_room` not `none`) whose `calibrated_confidence` clears the
+threshold:
+
+| | acted | wrong-room action rate (of n) |
+|---|---|---|
+| gate on (0.85, `--regate 0.85`) | 140/150 | 0.000 |
+| gate off (0.0, `--regate 0.0`) | 143/150 | 0.020 (3/150) |
+
+The gate catches all 3: three `negation` rows resolve to `meeting_room_b` at calibrated
+confidence 0.798, below 0.85, so they abstain under the gate and would act wrongly without it.
+"The gate has nothing left to catch" above is wrong; the corrected figure is **0.000 against
+0.020**.
 
 ## Resolver latency, beside 8B's
 
