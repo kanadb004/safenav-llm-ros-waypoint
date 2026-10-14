@@ -1,0 +1,17 @@
+e2e150 production (rescored): 140 gate-passed of 150, 26 wrong, 114 correct
+n_candidates is constant at 30 on every row (D53); not tabulated here.
+
+feature          wrong passes                                  correct passes
+raw_confidence   mean=0.9038 range=[0.8500, 0.9500] n=26       mean=0.9546 range=[0.9000, 0.9900] n=114
+edit_distance    mean=3.0000 range=[0.0000, 6.0000] n=26       mean=0.7982 range=[0.0000, 8.0000] n=114
+command_length   mean=41.7692 range=[32.0000, 66.0000] n=26    mean=36.2544 range=[20.0000, 70.0000] n=114
+token_entropy    mean=0.3131 range=[0.1985, 0.4227] n=26       mean=0.1815 range=[0.0560, 0.3251] n=114
+
+wrong passes that are spatial: 25/26
+
+By category, wrong passes:
+  abbreviation   0/27
+  alias          0/30
+  direct         0/30
+  negation       1/27
+  spatial        25/26
